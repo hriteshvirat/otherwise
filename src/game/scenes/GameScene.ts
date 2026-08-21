@@ -1,6 +1,6 @@
 // ============================================================
 // OTHERWISE — Game Scene
-// Main gameplay scene: renders levels, manages systems, audio, debug
+// Phase 2 Master Gameplay Scene: 4 Regions, Multi-Concepts, Regional Audio & VFX
 // ============================================================
 import Phaser from 'phaser';
 import { SCENES, COLORS, DEPTH, GAME_WIDTH, GAME_HEIGHT } from '../../utils/Constants';
@@ -47,7 +47,7 @@ export class GameScene extends Phaser.Scene {
 
   // Background
   private bgGraphics!: Phaser.GameObjects.Graphics;
-  private bgParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number }[] = [];
+  private bgParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; color?: number }[] = [];
   private bgParticleGfx: Phaser.GameObjects.Graphics | null = null;
 
   constructor() {
@@ -59,11 +59,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Initialize systems
     this.saveManager = new SaveManager();
     this.conceptManager = new ConceptManager();
     this.audioManager = new AudioManager(this);
-    this.behaviorSystem = new BehaviorSystem(this);
+    this.behaviorSystem = new BehaviorSystem(this, this.saveManager);
 
     // Load saved concepts
     const savedConcepts = this.saveManager.getDiscoveredConcepts();
@@ -72,11 +71,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Load level definition
-    this.currentLevel = ALL_LEVELS[this.currentLevelId];
-    if (!this.currentLevel) {
-      this.currentLevel = ALL_LEVELS[1];
-      this.currentLevelId = 1;
-    }
+    this.currentLevel = ALL_LEVELS[this.currentLevelId] || ALL_LEVELS[1];
+    this.saveManager.setCurrentLevel(this.currentLevelId);
 
     // Build the world
     this.drawBackground();
@@ -90,7 +86,7 @@ export class GameScene extends Phaser.Scene {
     this.createHUD();
     this.setupInput();
 
-    // Show level name
+    // Show level name & lore
     this.showLevelIntro();
 
     // Camera
@@ -105,10 +101,10 @@ export class GameScene extends Phaser.Scene {
     // Fade in
     this.cameras.main.fadeIn(600, 0x1A, 0x14, 0x25);
 
-    // Resume audio on first interaction & start background music
+    // Resume audio on first interaction & start regional soundtrack
     const startAudio = () => {
       this.audioManager.resume();
-      this.audioManager.startMusic();
+      this.audioManager.startMusic(this.currentLevel.region);
     };
 
     this.input.once('pointerdown', startAudio);
@@ -118,33 +114,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    // Update systems
     this.player.update(delta);
     this.behaviorSystem.update(delta);
     this.interactionSystem.update();
     this.cameraController.update(delta);
 
-    // Update entities
     for (const entity of this.entities) {
       entity.update(delta);
     }
 
-    // Update pressure plates
     this.updatePressurePlates();
 
     // Animate concept pickups
     this.conceptPickups.forEach((pickup, i) => {
-      pickup.y += Math.sin(time * 0.003 + i) * 0.3;
-      pickup.setScale(0.8 + Math.sin(time * 0.004 + i) * 0.1);
+      pickup.y += Math.sin(time * 0.003 + i) * 0.35;
+      pickup.setScale(0.85 + Math.sin(time * 0.004 + i) * 0.1);
     });
 
-    // Update background particles
     this.updateBgParticles(delta);
-
-    // Update HUD
     this.updateHUD();
 
-    // Debug overlay
     if (this.debugMode) {
       this.updateDebug();
     }
@@ -191,24 +180,53 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // ---- BACKGROUND ----
+  // ---- PROCEDURAL REGIONAL BACKGROUNDS ----
   private drawBackground(): void {
     const level = this.currentLevel;
     this.bgGraphics = this.add.graphics().setDepth(DEPTH.BG_FAR).setScrollFactor(0);
 
+    let skyTop: number = COLORS.SKY_TOP;
+    let skyBottom: number = COLORS.SKY_BOTTOM;
+    let mountainColor: number = COLORS.MOUNTAIN_FAR;
+    let groundTreeColor: number = COLORS.TREE_DARK;
+
+    if (level.region === 'woods') {
+      skyTop = COLORS.WOODS_SKY_TOP;
+      skyBottom = COLORS.WOODS_SKY_BOTTOM;
+      mountainColor = 0x1A2E26;
+      groundTreeColor = 0x0D1F16;
+    } else if (level.region === 'ruins') {
+      skyTop = COLORS.RUINS_SKY_TOP;
+      skyBottom = COLORS.RUINS_SKY_BOTTOM;
+      mountainColor = 0x3D281E;
+      groundTreeColor = 0x2A1B14;
+    } else if (level.region === 'mountains') {
+      skyTop = COLORS.MOUNTAINS_SKY_TOP;
+      skyBottom = COLORS.MOUNTAINS_SKY_BOTTOM;
+      mountainColor = 0x3E2452;
+      groundTreeColor = 0x251838;
+    }
+
     // Sky gradient
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const t = y / GAME_HEIGHT;
-      const r = Math.floor(0x2D + (0xE8 - 0x2D) * t);
-      const g = Math.floor(0x1B + (0xA8 - 0x1B) * t);
-      const b = Math.floor(0x69 + (0x7C - 0x69) * t);
+      const r1 = (skyTop >> 16) & 0xFF;
+      const g1 = (skyTop >> 8) & 0xFF;
+      const b1 = skyTop & 0xFF;
+      const r2 = (skyBottom >> 16) & 0xFF;
+      const g2 = (skyBottom >> 8) & 0xFF;
+      const b2 = skyBottom & 0xFF;
+
+      const r = Math.floor(r1 + (r2 - r1) * t);
+      const g = Math.floor(g1 + (g2 - g1) * t);
+      const b = Math.floor(b1 + (b2 - b1) * t);
       this.bgGraphics.fillStyle((r << 16) | (g << 8) | b);
       this.bgGraphics.fillRect(0, y, GAME_WIDTH, 1);
     }
 
-    // Distant mountains (parallax far)
+    // Far mountains (parallax 0.1)
     const mtnFar = this.add.graphics().setDepth(DEPTH.BG_FAR + 1).setScrollFactor(0.1);
-    mtnFar.fillStyle(COLORS.MOUNTAIN_FAR, 0.4);
+    mtnFar.fillStyle(mountainColor, 0.45);
     mtnFar.beginPath();
     mtnFar.moveTo(-100, GAME_HEIGHT);
     for (let x = -100; x <= level.width + 100; x += 80) {
@@ -219,9 +237,9 @@ export class GameScene extends Phaser.Scene {
     mtnFar.closePath();
     mtnFar.fillPath();
 
-    // Mid mountains (parallax mid)
+    // Mid silhouettes (parallax 0.3)
     const mtnMid = this.add.graphics().setDepth(DEPTH.BG_MID).setScrollFactor(0.3);
-    mtnMid.fillStyle(COLORS.MOUNTAIN_MID, 0.5);
+    mtnMid.fillStyle(mountainColor, 0.65);
     mtnMid.beginPath();
     mtnMid.moveTo(-100, GAME_HEIGHT);
     for (let x = -100; x <= level.width + 100; x += 60) {
@@ -232,50 +250,49 @@ export class GameScene extends Phaser.Scene {
     mtnMid.closePath();
     mtnMid.fillPath();
 
-    // Clouds
-    const clouds = this.add.graphics().setDepth(DEPTH.BG_FAR + 2).setScrollFactor(0.05);
-    for (let i = 0; i < 8; i++) {
-      const cx = (i * 320 + 80) % GAME_WIDTH;
-      const cy = 60 + (i * 35) % 180;
-      const size = 40 + (i * 12) % 40;
-      clouds.fillStyle(COLORS.CLOUD, 0.25);
-      clouds.fillEllipse(cx, cy, size * 2, size * 0.6);
-      clouds.fillEllipse(cx - size * 0.3, cy + 5, size * 1.2, size * 0.5);
-      clouds.fillEllipse(cx + size * 0.4, cy + 3, size * 1.5, size * 0.4);
+    // Regional details
+    if (level.region === 'woods') {
+      // Dense spooky forest trees
+      const trees = this.add.graphics().setDepth(DEPTH.FG_SILHOUETTE).setScrollFactor(0.85);
+      trees.fillStyle(groundTreeColor, 0.4);
+      for (let x = 0; x < level.width; x += 220) {
+        trees.fillRect(x + 20, 480, 24, 240);
+        trees.fillCircle(x + 32, 480, 40);
+      }
+    } else if (level.region === 'ruins') {
+      // Rotating gears in background
+      const gears = this.add.graphics().setDepth(DEPTH.BG_FAR + 2).setScrollFactor(0.15);
+      gears.lineStyle(4, COLORS.RUINS_BRASS, 0.3);
+      gears.strokeCircle(400, 300, 70);
+      gears.strokeCircle(750, 240, 90);
+      gears.strokeCircle(1100, 320, 60);
+    } else if (level.region === 'mountains') {
+      // Aurora ribbons
+      const aurora = this.add.graphics().setDepth(DEPTH.BG_FAR + 2).setScrollFactor(0.05);
+      aurora.fillStyle(COLORS.MOUNTAINS_AURORA, 0.15);
+      aurora.fillEllipse(300, 150, 500, 60);
+      aurora.fillEllipse(800, 180, 600, 70);
     }
 
-    // Foreground silhouette trees
-    const trees = this.add.graphics().setDepth(DEPTH.FG_SILHOUETTE).setScrollFactor(0.9);
-    this.drawTreeSilhouettes(trees, level.width);
-
-    // Init background particles
+    // Regional ambient particles
     this.bgParticles = [];
-    for (let i = 0; i < 16; i++) {
+    const pCount = level.region === 'woods' ? 24 : 16;
+    for (let i = 0; i < pCount; i++) {
+      let color: number = COLORS.DISCOVERY;
+      if (level.region === 'woods') color = COLORS.WOODS_GLOW;
+      if (level.region === 'ruins') color = COLORS.RUINS_BRASS;
+      if (level.region === 'mountains') color = COLORS.MOUNTAINS_AURORA;
+
       this.bgParticles.push({
         x: Math.random() * GAME_WIDTH,
-        y: Math.random() * GAME_HEIGHT * 0.8,
-        vx: (Math.random() - 0.5) * 12,
+        y: Math.random() * GAME_HEIGHT * 0.85,
+        vx: (Math.random() - 0.5) * 14,
         vy: -Math.random() * 8 - 2,
-        size: Math.random() * 2 + 0.5,
-        alpha: Math.random() * 0.25 + 0.05,
+        size: Math.random() * 2.5 + 0.5,
+        alpha: Math.random() * 0.3 + 0.05,
+        color,
       });
     }
-  }
-
-  private drawTreeSilhouettes(g: Phaser.GameObjects.Graphics, levelWidth: number): void {
-    g.fillStyle(COLORS.TREE_DARK, 0.3);
-    this.drawTree(g, -20, 720, 80, 200);
-    this.drawTree(g, 50, 720, 60, 160);
-    this.drawTree(g, levelWidth - 60, 720, 70, 180);
-    this.drawTree(g, levelWidth + 10, 720, 90, 220);
-  }
-
-  private drawTree(g: Phaser.GameObjects.Graphics, x: number, groundY: number, width: number, height: number): void {
-    g.fillRect(x + width * 0.35, groundY - height * 0.5, width * 0.3, height * 0.5);
-    g.fillCircle(x + width * 0.5, groundY - height * 0.6, width * 0.5);
-    g.fillCircle(x + width * 0.3, groundY - height * 0.5, width * 0.35);
-    g.fillCircle(x + width * 0.7, groundY - height * 0.5, width * 0.4);
-    g.fillCircle(x + width * 0.5, groundY - height * 0.75, width * 0.35);
   }
 
   private updateBgParticles(delta: number): void {
@@ -297,7 +314,7 @@ export class GameScene extends Phaser.Scene {
       if (p.x < -10) p.x = GAME_WIDTH + 10;
       if (p.x > GAME_WIDTH + 10) p.x = -10;
 
-      this.bgParticleGfx.fillStyle(COLORS.DISCOVERY, p.alpha);
+      this.bgParticleGfx.fillStyle(p.color || COLORS.DISCOVERY, p.alpha);
       this.bgParticleGfx.fillCircle(p.x, p.y, p.size);
     }
   }
@@ -307,30 +324,39 @@ export class GameScene extends Phaser.Scene {
     const level = this.currentLevel;
     this.groundGroup = this.physics.add.staticGroup();
 
+    let groundCol: number = COLORS.GROUND;
+    let groundDarkCol: number = COLORS.GROUND_DARK;
+
+    if (level.region === 'woods') {
+      groundCol = COLORS.WOODS_GROUND;
+      groundDarkCol = COLORS.WOODS_GROUND_DARK;
+    } else if (level.region === 'ruins') {
+      groundCol = COLORS.RUINS_GROUND;
+      groundDarkCol = COLORS.RUINS_GROUND_DARK;
+    } else if (level.region === 'mountains') {
+      groundCol = COLORS.MOUNTAINS_GROUND;
+      groundDarkCol = COLORS.MOUNTAINS_GROUND_DARK;
+    }
+
     for (const plat of level.platforms) {
       const g = this.add.graphics().setDepth(DEPTH.GROUND);
 
       if (plat.type !== 'invisible') {
-        // Ground surface with organic colors
-        g.fillStyle(COLORS.GROUND_DARK);
+        g.fillStyle(groundDarkCol);
         g.fillRect(plat.x, plat.y, plat.width, plat.height);
 
-        // Top grass layer
-        g.fillStyle(COLORS.GROUND);
+        g.fillStyle(groundCol);
         g.fillRect(plat.x, plat.y, plat.width, 10);
 
-        // Grass bumpy edge
         for (let bx = plat.x; bx < plat.x + plat.width; bx += 8) {
           const bh = 2 + Math.sin(bx * 0.3) * 2;
           g.fillRect(bx, plat.y - bh, 8, bh + 2);
         }
 
-        // Bottom edge
-        g.fillStyle(COLORS.GROUND_EDGE, 0.5);
+        g.fillStyle(0x000000, 0.25);
         g.fillRect(plat.x, plat.y + plat.height - 4, plat.width, 4);
       }
 
-      // Physics static body
       const body = this.groundGroup.create(
         plat.x + plat.width / 2,
         plat.y + plat.height / 2,
@@ -348,10 +374,15 @@ export class GameScene extends Phaser.Scene {
     this.player = new PlayerController(this, start.x, start.y);
     this.player.sprite.setDepth(DEPTH.PLAYER);
 
-    // Connect player audio events
-    this.player.onJump = () => this.audioManager.playSfx('jump');
+    this.player.onJump = () => {
+      this.audioManager.playSfx('jump');
+      this.saveManager.recordJump();
+    };
     this.player.onLand = () => this.audioManager.playSfx('land');
-    this.player.onDie = () => this.audioManager.playSfx('death');
+    this.player.onDie = () => {
+      this.audioManager.playSfx('death');
+      this.saveManager.recordDeath();
+    };
   }
 
   // ---- ENTITIES ----
@@ -364,7 +395,6 @@ export class GameScene extends Phaser.Scene {
       if (!def) continue;
 
       const entity = new BaseEntity(this, placement.x, placement.y, def);
-
       if (placement.id) {
         (entity as any)._placementId = placement.id;
       }
@@ -394,7 +424,6 @@ export class GameScene extends Phaser.Scene {
       const concept = ALL_CONCEPTS[pickup.conceptId];
       if (!concept) continue;
 
-      // Don't spawn if already discovered
       if (this.conceptManager.isDiscovered(pickup.conceptId)) continue;
 
       const sprite = this.physics.add.sprite(pickup.x, pickup.y, concept.icon)
@@ -404,7 +433,6 @@ export class GameScene extends Phaser.Scene {
       (sprite.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
       (sprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
 
-      // Soft glow effect
       const glow = this.add.graphics().setDepth(DEPTH.ENTITIES + 9);
       const updateGlow = () => {
         glow.clear();
@@ -427,7 +455,6 @@ export class GameScene extends Phaser.Scene {
   private createGoal(): void {
     const goal = this.currentLevel.goalPosition;
 
-    // Goal visual — glowing beacon portal
     const goalGfx = this.add.graphics().setDepth(DEPTH.ENTITIES + 5);
     const drawGoal = () => {
       goalGfx.clear();
@@ -447,7 +474,6 @@ export class GameScene extends Phaser.Scene {
     };
     this.events.on('update', drawGoal);
 
-    // Goal collision zone
     this.goalSprite = this.physics.add.sprite(goal.x, goal.y, 'particle')
       .setVisible(false)
       .setScale(2);
@@ -458,17 +484,14 @@ export class GameScene extends Phaser.Scene {
 
   // ---- COLLISIONS ----
   private setupCollisions(): void {
-    // Player vs ground
     this.physics.add.collider(this.player.sprite, this.groundGroup);
 
-    // Entities vs ground
     for (const entity of this.entities) {
       if (entity.definition.hasPhysics) {
         this.physics.add.collider(entity.sprite, this.groundGroup);
       }
     }
 
-    // Player vs concept pickups
     this.physics.add.overlap(
       this.player.sprite,
       this.conceptPickups,
@@ -481,15 +504,14 @@ export class GameScene extends Phaser.Scene {
       this
     );
 
-    // Player vs collectibles in level
-    const collectibles = this.entities.filter(e => e.definition.type === 'collectible');
-    for (const item of collectibles) {
+    // Player vs Collectibles & Food
+    const items = this.entities.filter(e => e.definition.type === 'collectible' || e.definition.type === 'food');
+    for (const item of items) {
       this.physics.add.overlap(
         this.player.sprite,
         item.sprite,
         () => {
           this.audioManager.playSfx('collect');
-          // Burst particles
           const emitter = this.add.particles(item.sprite.x, item.sprite.y, 'glow', {
             speed: { min: 30, max: 80 },
             angle: { min: 0, max: 360 },
@@ -512,7 +534,6 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
-    // Player vs goal
     this.physics.add.overlap(
       this.player.sprite,
       this.goalSprite,
@@ -521,14 +542,14 @@ export class GameScene extends Phaser.Scene {
       this
     );
 
-    // Player vs physical entities (for pushing rocks, standing on platforms)
+    // Player vs Physical Entities
     for (const entity of this.entities) {
       if (entity.definition.hasPhysics && entity.definition.mass < 10) {
         this.physics.add.collider(this.player.sprite, entity.sprite);
       }
     }
 
-    // Entities vs entities (rocks pushing each other)
+    // Entities vs Entities
     for (let i = 0; i < this.entities.length; i++) {
       for (let j = i + 1; j < this.entities.length; j++) {
         if (this.entities[i].definition.hasPhysics && this.entities[j].definition.hasPhysics) {
@@ -551,7 +572,6 @@ export class GameScene extends Phaser.Scene {
     this.behaviorSystem.setGroundGroup(this.groundGroup);
     this.behaviorSystem.setSaveManager(this.saveManager);
 
-    // Concept manager discovery callback
     this.conceptManager.onConceptDiscovered = (concept: ConceptDefinition) => {
       this.saveManager.discoverConcept(concept.id);
       this.showConceptDiscovery(concept);
@@ -562,70 +582,69 @@ export class GameScene extends Phaser.Scene {
   private setupInput(): void {
     if (!this.input.keyboard) return;
 
-    // Pause
     this.input.keyboard.on('keydown-ESC', () => {
       this.scene.launch(SCENES.PAUSE, { gameScene: this });
       this.scene.pause();
     });
 
-    // Restart
     this.input.keyboard.on('keydown-R', () => {
       this.audioManager.stopMusic();
       this.scene.restart({ level: this.currentLevelId });
     });
 
-    // Concept selector
+    this.input.keyboard.on('keydown-M', () => {
+      this.audioManager.stopMusic();
+      this.scene.start(SCENES.WORLD_MAP);
+    });
+
     this.input.keyboard.on('keydown-Q', () => this.toggleConceptSelector());
     this.input.keyboard.on('keydown-TAB', (e: KeyboardEvent) => {
       e.preventDefault();
       this.toggleConceptSelector();
     });
 
-    // Quick concept cycle with number keys (1, 2, 3)
-    this.input.keyboard.on('keydown-ONE', () => {
-      if (this.debugMode) {
-        this.switchLevel(1);
-      } else {
-        this.quickEquipConcept(0);
-      }
-    });
+    // Quick concept cycle (1-9)
+    for (let i = 1; i <= 9; i++) {
+      this.input.keyboard.on(`keydown-${this.getNumberKeyName(i)}`, () => {
+        if (this.debugMode) {
+          this.switchLevel(i);
+        } else {
+          this.quickEquipConcept(i - 1);
+        }
+      });
+    }
 
-    this.input.keyboard.on('keydown-TWO', () => {
-      if (this.debugMode) {
-        this.switchLevel(2);
-      } else {
-        this.quickEquipConcept(1);
-      }
-    });
-
-    this.input.keyboard.on('keydown-THREE', () => {
-      if (this.debugMode) {
-        this.switchLevel(3);
-      } else {
-        this.quickEquipConcept(2);
-      }
-    });
-
-    // Debug toggle (backtick `)
+    // Debug toggle
     this.input.keyboard.on('keydown-BACKTICK', () => {
       this.debugMode = !this.debugMode;
-      if (!this.debugMode) {
-        this.clearDebug();
-      }
+      if (!this.debugMode) this.clearDebug();
     });
 
-    // Debug cheats (G to grant all concepts, H to toggle hitboxes)
+    // Cheat key: Grant all 13 Concepts
     this.input.keyboard.on('keydown-G', () => {
       if (this.debugMode) {
-        this.conceptManager.discoverConcept('fear');
-        this.conceptManager.discoverConcept('lonely');
-        this.conceptManager.discoverConcept('curious');
-        this.saveManager.discoverConcept('fear');
-        this.saveManager.discoverConcept('lonely');
-        this.saveManager.discoverConcept('curious');
+        Object.keys(ALL_CONCEPTS).forEach(cid => {
+          this.conceptManager.discoverConcept(cid);
+          this.saveManager.discoverConcept(cid);
+        });
         this.audioManager.playSfx('discovery');
       }
     });
+
+    // Clear Concept from nearest entity with X
+    this.input.keyboard.on('keydown-X', () => {
+      const pos = this.player.getPosition();
+      const nearest = this.behaviorSystem.findNearest(pos.x, pos.y);
+      if (nearest && nearest.appliedConcepts.length > 0 && nearest.distanceTo(this.player.sprite) < 70) {
+        nearest.removeConcept();
+        this.audioManager.playSfx('switch');
+      }
+    });
+  }
+
+  private getNumberKeyName(n: number): string {
+    const names = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    return names[n];
   }
 
   private switchLevel(levelNum: number): void {
@@ -638,13 +657,11 @@ export class GameScene extends Phaser.Scene {
     const concept = this.conceptManager.discoverConcept(conceptId);
     if (!concept) return;
 
-    // Remove pickup
     const glow = sprite.getData('glow') as Phaser.GameObjects.Graphics;
     const glowUpdate = sprite.getData('glowUpdate') as () => void;
     if (glow) glow.destroy();
     if (glowUpdate) this.events.off('update', glowUpdate);
 
-    // Collection particles
     const emitter = this.add.particles(sprite.x, sprite.y, 'glow', {
       speed: { min: 40, max: 120 },
       angle: { min: 0, max: 360 },
@@ -730,14 +747,14 @@ export class GameScene extends Phaser.Scene {
 
   // ---- LEVEL INTRO ----
   private showLevelIntro(): void {
-    const name = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, this.currentLevel.name, {
+    const name = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 25, this.currentLevel.name, {
       fontSize: '32px',
       fontFamily: 'Georgia, serif',
       color: hexToString(COLORS.UI_TEXT),
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(DEPTH.OVERLAY).setAlpha(0);
 
-    const subtitle = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20, this.currentLevel.subtitle, {
+    const subtitle = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 15, this.currentLevel.subtitle, {
       fontSize: '14px',
       fontFamily: 'Georgia, serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
@@ -745,7 +762,7 @@ export class GameScene extends Phaser.Scene {
 
     this.tweens.add({ targets: [name, subtitle], alpha: 1, duration: 800, ease: 'Sine.easeOut' });
 
-    this.time.delayedCall(2000, () => {
+    this.time.delayedCall(2200, () => {
       this.tweens.add({
         targets: [name, subtitle],
         alpha: 0,
@@ -763,7 +780,6 @@ export class GameScene extends Phaser.Scene {
     this.saveManager.completeLevel(this.currentLevelId);
     this.audioManager.playSfx('puzzle_success');
 
-    // Success particles
     const goal = this.currentLevel.goalPosition;
     const emitter = this.add.particles(goal.x, goal.y, 'glow', {
       speed: { min: 50, max: 200 },
@@ -771,17 +787,17 @@ export class GameScene extends Phaser.Scene {
       scale: { start: 0.8, end: 0 },
       alpha: { start: 1, end: 0 },
       lifespan: 1000,
-      quantity: 20,
+      quantity: 22,
       tint: [COLORS.SUCCESS, COLORS.DISCOVERY, 0xFFFFFF],
     });
-    emitter.explode(20);
+    emitter.explode(22);
 
     this.cameraController.flash(400);
 
-    this.time.delayedCall(1500, () => {
+    this.time.delayedCall(1600, () => {
       this.audioManager.stopMusic();
       const nextLevel = this.currentLevelId + 1;
-      if (ALL_LEVELS[nextLevel]) {
+      if (ALL_LEVELS[nextLevel] && nextLevel <= 16) {
         this.cameras.main.fadeOut(600, 0x1A, 0x14, 0x25);
         this.cameras.main.once('camerafadeoutcomplete', () => {
           this.scene.restart({ level: nextLevel });
@@ -789,7 +805,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         this.cameras.main.fadeOut(800, 0x1A, 0x14, 0x25);
         this.cameras.main.once('camerafadeoutcomplete', () => {
-          this.scene.start(SCENES.MAIN_MENU);
+          this.scene.start(SCENES.WORLD_MAP);
         });
       }
     });
@@ -798,24 +814,24 @@ export class GameScene extends Phaser.Scene {
   // ---- HUD ----
   private createHUD(): void {
     const hudBg = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.UI);
-    hudBg.fillStyle(COLORS.UI_PANEL, 0.75);
-    hudBg.fillRoundedRect(16, GAME_HEIGHT - 60, 150, 44, 10);
-    hudBg.lineStyle(1, COLORS.UI_BORDER, 0.4);
-    hudBg.strokeRoundedRect(16, GAME_HEIGHT - 60, 150, 44, 10);
+    hudBg.fillStyle(COLORS.UI_PANEL, 0.8);
+    hudBg.fillRoundedRect(16, GAME_HEIGHT - 65, 170, 48, 10);
+    hudBg.lineStyle(1, COLORS.UI_BORDER, 0.45);
+    hudBg.strokeRoundedRect(16, GAME_HEIGHT - 65, 170, 48, 10);
 
-    this.hudConceptIcon = this.add.image(44, GAME_HEIGHT - 38, 'particle')
+    this.hudConceptIcon = this.add.image(44, GAME_HEIGHT - 41, 'particle')
       .setScrollFactor(0)
       .setDepth(DEPTH.UI + 1)
       .setScale(1.2);
 
-    this.hudConceptText = this.add.text(68, GAME_HEIGHT - 48, 'No Concept', {
+    this.hudConceptText = this.add.text(68, GAME_HEIGHT - 51, 'No Concept', {
       fontSize: '13px',
       fontFamily: '"Segoe UI", Roboto, sans-serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
       fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(DEPTH.UI + 1);
 
-    this.add.text(68, GAME_HEIGHT - 28, '[Q] Select Concept', {
+    this.add.text(68, GAME_HEIGHT - 30, '[Q] Wheel · [M] Map', {
       fontSize: '10px',
       fontFamily: '"Segoe UI", Roboto, sans-serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
@@ -834,7 +850,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // ---- CONCEPT SELECTOR ----
+  // ---- RADIAL CONCEPT SELECTOR ----
   private toggleConceptSelector(): void {
     if (this.conceptSelectorOpen) {
       this.closeConceptSelector();
@@ -859,19 +875,19 @@ export class GameScene extends Phaser.Scene {
       .setDepth(DEPTH.OVERLAY);
     this.conceptSelectorContainer = container;
 
-    const bg = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.4)
+    const bg = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.45)
       .setScrollFactor(0);
     container.add(bg);
 
-    const title = this.add.text(0, -110, 'SELECT CONCEPT', {
-      fontSize: '16px',
+    const title = this.add.text(0, -150, 'SELECT CONCEPT', {
+      fontSize: '18px',
       fontFamily: 'Georgia, serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
       letterSpacing: 4,
     }).setOrigin(0.5);
     container.add(title);
 
-    const radius = 70;
+    const radius = concepts.length > 6 ? 110 : 80;
     const equippedId = this.conceptManager.getEquippedId();
 
     concepts.forEach((concept, i) => {
@@ -881,46 +897,48 @@ export class GameScene extends Phaser.Scene {
 
       const iconBg = this.add.graphics();
       const isEquipped = concept.id === equippedId;
-      iconBg.fillStyle(isEquipped ? concept.visualStyle.glowColor : COLORS.UI_PANEL, isEquipped ? 0.3 : 0.85);
-      iconBg.fillCircle(x, y, 32);
-      iconBg.lineStyle(2, concept.visualStyle.glowColor, isEquipped ? 1 : 0.4);
-      iconBg.strokeCircle(x, y, 32);
+      iconBg.fillStyle(isEquipped ? concept.visualStyle.glowColor : COLORS.UI_PANEL, isEquipped ? 0.35 : 0.85);
+      iconBg.fillCircle(x, y, 28);
+      iconBg.lineStyle(2, concept.visualStyle.glowColor, isEquipped ? 1 : 0.45);
+      iconBg.strokeCircle(x, y, 28);
       container.add(iconBg);
 
-      const icon = this.add.image(x, y, concept.icon).setScale(1.4);
+      const icon = this.add.image(x, y, concept.icon).setScale(1.25);
       container.add(icon);
 
-      const label = this.add.text(x, y + 44, concept.name, {
-        fontSize: '12px',
+      const label = this.add.text(x, y + 38, concept.name, {
+        fontSize: '11px',
         fontFamily: 'Georgia, serif',
         color: hexToString(isEquipped ? concept.visualStyle.glowColor : COLORS.UI_TEXT),
-        letterSpacing: 2,
+        letterSpacing: 1,
         fontStyle: 'bold',
       }).setOrigin(0.5);
       container.add(label);
 
-      const numHint = this.add.text(x, y - 42, `[${i + 1}]`, {
-        fontSize: '11px',
-        fontFamily: '"Segoe UI", Roboto, sans-serif',
-        color: hexToString(COLORS.UI_TEXT_DIM),
-      }).setOrigin(0.5);
-      container.add(numHint);
+      if (i < 9) {
+        const numHint = this.add.text(x, y - 36, `[${i + 1}]`, {
+          fontSize: '10px',
+          fontFamily: '"Segoe UI", Roboto, sans-serif',
+          color: hexToString(COLORS.UI_TEXT_DIM),
+        }).setOrigin(0.5);
+        container.add(numHint);
+      }
     });
 
-    const instr = this.add.text(0, 120, 'Press 1-3 to equip · Q to close', {
+    const instr = this.add.text(0, 160, 'Press 1-9 to equip · [Q] to close · [X] Clear concept', {
       fontSize: '12px',
       fontFamily: '"Segoe UI", Roboto, sans-serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
     }).setOrigin(0.5);
     container.add(instr);
 
-    container.setAlpha(0).setScale(0.8);
+    container.setAlpha(0).setScale(0.85);
     this.tweens.add({
       targets: container,
       alpha: 1,
       scaleX: 1,
       scaleY: 1,
-      duration: 200,
+      duration: 180,
       ease: 'Back.easeOut',
     });
   }
@@ -931,9 +949,9 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({
         targets: this.conceptSelectorContainer,
         alpha: 0,
-        scaleX: 0.8,
-        scaleY: 0.8,
-        duration: 150,
+        scaleX: 0.85,
+        scaleY: 0.85,
+        duration: 140,
         onComplete: () => {
           this.conceptSelectorContainer?.destroy();
           this.conceptSelectorContainer = null;
@@ -958,17 +976,17 @@ export class GameScene extends Phaser.Scene {
     this.clearDebug();
 
     const pos = this.player.getPosition();
-    this.addDebugText(10, 10, `[DEBUG MODE ACTIVE (Press \` to toggle)]`);
-    this.addDebugText(10, 26, `Player: ${pos.x.toFixed(0)}, ${pos.y.toFixed(0)} | State: ${this.player.state}`);
-    this.addDebugText(10, 42, `Level: ${this.currentLevelId} (Press 1/2/3 to switch) | Entities: ${this.entities.length}`);
-    this.addDebugText(10, 58, `Concepts: ${this.conceptManager.getDiscoveredConcepts().map(c => c.name).join(', ') || 'None'} (Press G to grant all)`);
+    this.addDebugText(10, 10, `[DEBUG MODE · Press \` to toggle · Press G to grant all concepts]`);
+    this.addDebugText(10, 26, `Player: (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) | State: ${this.player.state}`);
+    this.addDebugText(10, 42, `Level: ${this.currentLevelId} (${this.currentLevel.name}) | Region: ${this.currentLevel.region}`);
+    this.addDebugText(10, 58, `Discovered: ${this.conceptManager.getDiscoveredConcepts().map(c => c.name).join(', ') || 'None'}`);
 
     let y = 80;
     for (const entity of this.entities) {
-      if (entity.appliedConcept) {
+      if (entity.appliedConcepts.length > 0) {
+        const cNames = entity.appliedConcepts.map(c => c.name).join(' + ');
         this.addDebugText(10, y,
-          `${entity.definition.displayName} [${entity.appliedConcept.name}] → ${entity.currentGoal} ` +
-          `(score: ${entity.targetScore.toFixed(2)})`
+          `${entity.definition.displayName} [${cNames}] → Goal: ${entity.currentGoal} (score: ${entity.targetScore.toFixed(2)})`
         );
         y += 16;
       }
@@ -991,7 +1009,6 @@ export class GameScene extends Phaser.Scene {
     this.debugTexts = [];
   }
 
-  // ---- CLEANUP ----
   shutdown(): void {
     (this as any)._levelComplete = false;
     this.audioManager.stopMusic();

@@ -2,15 +2,17 @@
 // OTHERWISE — Phaser Game Configuration
 // ============================================================
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, PLAYER, SCENES } from '../../utils/Constants';
+import { GAME_WIDTH, GAME_HEIGHT, PLAYER } from '../../utils/Constants';
 import { BootScene } from '../scenes/BootScene';
 import { PreloadScene } from '../scenes/PreloadScene';
 import { MainMenuScene } from '../scenes/MainMenuScene';
+import { WorldMapScene } from '../scenes/WorldMapScene';
 import { GameScene } from '../scenes/GameScene';
 import { PauseScene } from '../scenes/PauseScene';
 import { SettingsScene } from '../scenes/SettingsScene';
 import { CreditsScene } from '../scenes/CreditsScene';
 import { JournalScene } from '../scenes/JournalScene';
+import { CreativeArchiveScene } from '../scenes/CreativeArchiveScene';
 
 export function createGameConfig(): Phaser.Types.Core.GameConfig {
   return {
@@ -43,11 +45,13 @@ export function createGameConfig(): Phaser.Types.Core.GameConfig {
       BootScene,
       PreloadScene,
       MainMenuScene,
+      WorldMapScene,
       GameScene,
       PauseScene,
       SettingsScene,
       CreditsScene,
       JournalScene,
+      CreativeArchiveScene,
     ],
   };
 }

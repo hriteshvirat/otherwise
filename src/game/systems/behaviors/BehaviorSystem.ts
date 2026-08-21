@@ -1,7 +1,7 @@
 // ============================================================
 // OTHERWISE — Behavior System
-// Generic perceive → evaluate → score → select → execute pipeline
-// Concepts drive behavior through data, never through if/else per level
+// Multi-Concept perceive → evaluate → score → select → execute pipeline
+// Supports all 13 Concepts with multi-concept combinations and synergies
 // ============================================================
 import Phaser from 'phaser';
 import { BaseEntity } from '../../entities/BaseEntity';
@@ -15,7 +15,7 @@ interface ScoredTarget {
   score: number;
   distance: number;
   tags: string[];
-  valence: number; // +1 approach, -1 flee
+  valence: number;
 }
 
 export class BehaviorSystem {
@@ -31,84 +31,82 @@ export class BehaviorSystem {
     this.saveManager = saveManager || null;
   }
 
-  /** Set SaveManager for discovery tracking */
   setSaveManager(sm: SaveManager): void {
     this.saveManager = sm;
   }
 
-  /** Register the player sprite so entities can perceive it */
   setPlayer(sprite: Phaser.Physics.Arcade.Sprite): void {
     this.playerSprite = sprite;
   }
 
-  /** Set ground group for collision */
   setGroundGroup(group: Phaser.Physics.Arcade.StaticGroup): void {
     this.groundGroup = group;
   }
 
-  /** Add an entity to the behavior system */
   addEntity(entity: BaseEntity): void {
     this.entities.push(entity);
   }
 
-  /** Remove an entity from the behavior system */
   removeEntity(entity: BaseEntity): void {
     this.entities = this.entities.filter(e => e !== entity);
   }
 
-  /** Update all entities with concepts — called every frame */
   update(delta: number): void {
     this.updateTimer += delta;
 
-    // AI ticks happen at fixed intervals
     if (this.updateTimer < BEHAVIOR.UPDATE_INTERVAL) return;
     this.updateTimer = 0;
 
     for (const entity of this.entities) {
-      if (!entity.appliedConcept) continue;
+      if (entity.appliedConcepts.length === 0) continue;
       this.processEntity(entity);
     }
   }
 
-  /** Process one entity through the full behavior pipeline */
+  /** Process entity through multi-concept pipeline */
   private processEntity(entity: BaseEntity): void {
-    const concept = entity.appliedConcept!;
+    const primaryConcept = entity.appliedConcepts[0];
+    const secondaryConcept = entity.appliedConcepts.length > 1 ? entity.appliedConcepts[1] : null;
 
-    // 1. PERCEIVE — gather nearby entities/targets
-    const perceived = this.perceive(entity, concept);
+    // 1. PERCEIVE
+    const perceived = this.perceive(entity, primaryConcept, secondaryConcept);
 
-    // 2. EVALUATE & SCORE — score each target based on concept rules
-    const scored = this.evaluate(entity, concept, perceived);
+    // 2. EVALUATE & SCORE (Combines rules from all active concepts)
+    const scored = this.evaluate(entity, primaryConcept, secondaryConcept, perceived);
 
-    // 3. SELECT — pick the best target
-    const selected = this.selectGoal(scored, concept);
+    // 3. SELECT GOAL
+    const selected = this.selectGoal(scored);
 
-    // 4. EXECUTE — move toward/away from target
+    // 4. EXECUTE
     if (selected) {
       entity.currentTarget = selected.entity;
       entity.targetScore = selected.score;
       entity.currentGoal = selected.valence > 0 ? 'approach' : 'flee';
-      this.execute(entity, concept, selected);
+      this.execute(entity, primaryConcept, secondaryConcept, selected);
 
-      // Track emergent discoveries
+      // Track discoveries in SaveManager
       if (this.saveManager) {
         if (selected.tags.includes('player')) {
-          if (concept.id === 'fear') this.saveManager.addDiscovery('fear_player');
-          if (concept.id === 'curious') this.saveManager.addDiscovery('curious_player');
+          if (primaryConcept.id === 'fear' || secondaryConcept?.id === 'fear') this.saveManager.addDiscovery('fear_player');
+          if (primaryConcept.id === 'curious' || secondaryConcept?.id === 'curious') this.saveManager.addDiscovery('curious_player');
+          if (primaryConcept.id === 'trust' || secondaryConcept?.id === 'trust') this.saveManager.addDiscovery('trust_player');
         }
       }
     } else {
       entity.currentTarget = null;
       entity.currentGoal = 'idle';
-      this.executeIdle(entity);
+      this.executeIdle(entity, primaryConcept);
     }
   }
 
   // ---- PERCEIVE ----
-  private perceive(entity: BaseEntity, concept: ConceptDefinition): ScoredTarget[] {
+  private perceive(
+    entity: BaseEntity,
+    primary: ConceptDefinition,
+    secondary: ConceptDefinition | null
+  ): ScoredTarget[] {
     const targets: ScoredTarget[] = [];
 
-    // Check all other entities
     for (const other of this.entities) {
       if (other === entity) continue;
       const d = entity.distanceTo(other);
@@ -123,7 +121,6 @@ export class BehaviorSystem {
       });
     }
 
-    // Check player
     if (this.playerSprite) {
       const d = dist(
         entity.sprite.x, entity.sprite.y,
@@ -146,14 +143,20 @@ export class BehaviorSystem {
   // ---- EVALUATE ----
   private evaluate(
     entity: BaseEntity,
-    concept: ConceptDefinition,
+    primary: ConceptDefinition,
+    secondary: ConceptDefinition | null,
     targets: ScoredTarget[]
   ): ScoredTarget[] {
+    const rules = [...primary.perceptionRules];
+    if (secondary) {
+      rules.push(...secondary.perceptionRules.map(r => ({ ...r, weight: r.weight * 0.75 })));
+    }
+
     for (const target of targets) {
       let totalScore = 0;
       let totalValence = 0;
 
-      for (const rule of concept.perceptionRules) {
+      for (const rule of rules) {
         const matches = rule.targetTags.some(tag => target.tags.includes(tag));
         if (!matches) continue;
         if (target.distance > rule.range) continue;
@@ -164,24 +167,22 @@ export class BehaviorSystem {
         totalValence += rule.valence * ruleScore;
       }
 
-      // Bonus: prefer entities that already have the same concept (for LONELY)
+      // Contextual multipliers
       if (target.entity instanceof BaseEntity) {
         const other = target.entity as BaseEntity;
-        if (other.appliedConcept && other.appliedConcept.id === concept.id) {
-          totalScore *= 1.5;
+        // Lonely bonus
+        if ((primary.id === 'lonely' || secondary?.id === 'lonely') && other.definition.type === entity.definition.type) {
+          totalScore *= 1.4;
         }
-        // Bonus for matching entity types (LONELY rocks prefer other rocks)
-        if (other.definition.type === entity.definition.type) {
-          totalScore *= 1.3;
+        // Curious novelty bonus for moving objects
+        if ((primary.id === 'curious' || secondary?.id === 'curious') && other.body) {
+          if (Math.abs(other.body.velocity.x) > 5 || Math.abs(other.body.velocity.y) > 5) {
+            totalScore *= 2.0;
+          }
         }
-      }
-
-      // Novelty bonus for CURIOUS: recently moved entities are more interesting
-      if (concept.id === 'curious' && target.entity instanceof BaseEntity) {
-        const other = target.entity as BaseEntity;
-        const body = other.body;
-        if (body && (Math.abs(body.velocity.x) > 5 || Math.abs(body.velocity.y) > 5)) {
-          totalScore *= 2.0;
+        // Greedy bonus for valuable collectibles
+        if ((primary.id === 'greedy' || secondary?.id === 'greedy') && other.hasTag('valuable')) {
+          totalScore *= 2.5;
         }
       }
 
@@ -193,18 +194,20 @@ export class BehaviorSystem {
   }
 
   // ---- SELECT ----
-  private selectGoal(targets: ScoredTarget[], concept: ConceptDefinition): ScoredTarget | null {
+  private selectGoal(targets: ScoredTarget[]): ScoredTarget | null {
     if (targets.length === 0) return null;
-
     targets.sort((a, b) => b.score - a.score);
     const meaningful = targets.filter(t => t.score > 0.1);
-    if (meaningful.length === 0) return null;
-
-    return meaningful[0];
+    return meaningful.length > 0 ? meaningful[0] : null;
   }
 
   // ---- EXECUTE ----
-  private execute(entity: BaseEntity, concept: ConceptDefinition, target: ScoredTarget): void {
+  private execute(
+    entity: BaseEntity,
+    primary: ConceptDefinition,
+    secondary: ConceptDefinition | null,
+    target: ScoredTarget
+  ): void {
     const body = entity.body;
     if (!body || body.immovable) return;
 
@@ -220,17 +223,18 @@ export class BehaviorSystem {
     const distance = Math.sqrt(dx * dx + dy * dy);
     if (distance < 1) return;
 
-    const speed = BEHAVIOR.MOVE_SPEED * concept.movementRules.speedMultiplier;
+    const speed = BEHAVIOR.MOVE_SPEED * primary.movementRules.speedMultiplier;
     const nx = dx / distance;
-    const rules = concept.movementRules;
+    const rules = primary.movementRules;
     const erratic = (Math.random() - 0.5) * rules.erraticness * speed;
 
+    // Movement mode branching
     switch (rules.approachMode) {
       case 'approach': {
         if (distance > rules.minDistance) {
           body.setVelocityX(nx * speed + erratic);
         } else {
-          body.setVelocityX(body.velocity.x * 0.9);
+          body.setVelocityX(body.velocity.x * 0.85);
         }
         break;
       }
@@ -238,46 +242,73 @@ export class BehaviorSystem {
         if (distance < rules.minDistance) {
           body.setVelocityX(-nx * speed * 1.5 + erratic);
         } else if (distance < rules.maxDistance) {
-          body.setVelocityX(-nx * speed * 0.8 + erratic);
+          body.setVelocityX(-nx * speed * 0.85 + erratic);
         } else {
-          body.setVelocityX(body.velocity.x * 0.95);
+          body.setVelocityX(body.velocity.x * 0.9);
         }
+        break;
+      }
+      case 'shield': {
+        // Position between player and danger
+        if (this.playerSprite) {
+          const midX = (this.playerSprite.x + targetX) / 2;
+          const shieldDx = midX - entity.sprite.x;
+          if (Math.abs(shieldDx) > 10) {
+            body.setVelocityX(Math.sign(shieldDx) * speed);
+          } else {
+            body.setVelocityX(0);
+          }
+        }
+        break;
+      }
+      case 'mimic': {
+        // Mirror target's movement
+        if (this.playerSprite && this.playerSprite.body) {
+          const playerVX = (this.playerSprite.body as Phaser.Physics.Arcade.Body).velocity.x;
+          body.setVelocityX(playerVX * 0.95);
+        }
+        break;
+      }
+      case 'anchor': {
+        body.setVelocityX(0);
         break;
       }
       case 'orbit': {
         const perpX = -dy / distance;
-        const approachFactor = distance > rules.maxDistance ? 0.5 : distance < rules.minDistance ? -0.5 : 0;
-        body.setVelocityX((perpX + nx * approachFactor) * speed + erratic);
+        body.setVelocityX(perpX * speed);
         break;
       }
     }
 
-    // Little hop if obstacle is encountered while grounded
+    // Small obstacle hop if blocked on ground
     const isGrounded = body.blocked.down || body.touching.down;
     const isSideBlocked = body.blocked.left || body.blocked.right || body.touching.left || body.touching.right;
     if (isGrounded && isSideBlocked && Math.abs(body.velocity.x) > 10) {
-      body.setVelocityY(-200);
+      body.setVelocityY(-210);
     }
   }
 
-  /** Idle behavior when no target found */
-  private executeIdle(entity: BaseEntity): void {
+  private executeIdle(entity: BaseEntity, primary: ConceptDefinition): void {
     const body = entity.body;
     if (!body || body.immovable) return;
-    body.setVelocityX(body.velocity.x * 0.95);
+
+    if (primary.id === 'repeat') {
+      // Periodic pendulum oscillation for repeat concept
+      const t = this.scene.time.now / 1000;
+      body.setVelocityX(Math.sin(t * 2) * BEHAVIOR.MOVE_SPEED);
+    } else {
+      body.setVelocityX(body.velocity.x * 0.92);
+    }
   }
 
-  /** Get all entities */
   getEntities(): BaseEntity[] {
     return this.entities;
   }
 
-  /** Find entities by tag */
   findByTag(tag: string): BaseEntity[] {
     return this.entities.filter(e => e.hasTag(tag));
   }
 
-  /** Find nearest entity with tag */
   findNearest(x: number, y: number, tag?: string): BaseEntity | null {
     let nearest: BaseEntity | null = null;
     let nearestDist = Infinity;
@@ -294,7 +325,6 @@ export class BehaviorSystem {
     return nearest;
   }
 
-  /** Clean up */
   destroy(): void {
     this.entities = [];
     this.playerSprite = null;

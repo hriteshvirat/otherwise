@@ -1,6 +1,6 @@
 // ============================================================
 // OTHERWISE — Base Entity
-// Foundation for all world objects with concept support & interactive states
+// Supports Multi-Concept assignment (up to 2), visual cues, and state changes
 // ============================================================
 import Phaser from 'phaser';
 import { EntityDefinition } from '../data/EntityDefinitions';
@@ -14,18 +14,23 @@ export class BaseEntity {
   public definition: EntityDefinition;
   public tags: string[];
 
-  // Concept state
-  public appliedConcept: ConceptDefinition | null = null;
-  public conceptJustApplied = false;
+  // Multi-Concept State (up to 2 concepts)
+  public appliedConcepts: ConceptDefinition[] = [];
+  public get appliedConcept(): ConceptDefinition | null {
+    return this.appliedConcepts.length > 0 ? this.appliedConcepts[0] : null;
+  }
+  public get secondaryConcept(): ConceptDefinition | null {
+    return this.appliedConcepts.length > 1 ? this.appliedConcepts[1] : null;
+  }
 
-  // Behavior state (set by BehaviorSystem)
+  // Behavior state
   public currentTarget: BaseEntity | Phaser.Physics.Arcade.Sprite | null = null;
   public currentGoal: string = 'idle';
   public targetScore = 0;
 
   // Visual state
   private auraGraphics: Phaser.GameObjects.Graphics | null = null;
-  private conceptIcon: Phaser.GameObjects.Image | null = null;
+  private conceptIcons: Phaser.GameObjects.Image[] = [];
   private animTimer = 0;
   public initialX = 0;
   public initialY = 0;
@@ -56,7 +61,7 @@ export class BaseEntity {
 
     this.body = this.sprite.body as Phaser.Physics.Arcade.Body;
 
-    // Setup physics based on definition
+    // Setup physics
     if (definition.hasPhysics) {
       this.body.setCollideWorldBounds(false);
       this.body.setBounce(0.1, 0.05);
@@ -69,24 +74,36 @@ export class BaseEntity {
     }
   }
 
-  /** Apply a concept to this entity */
+  /** Apply a concept to this entity (supports up to 2 concepts) */
   applyConcept(concept: ConceptDefinition): boolean {
-    // Check compatibility
     const compatible = concept.compatibleTags.some(tag => this.tags.includes(tag));
     if (!compatible) return false;
 
-    this.appliedConcept = concept;
-    this.conceptJustApplied = true;
+    // If already has this concept, return true
+    if (this.appliedConcepts.some(c => c.id === concept.id)) return true;
+
+    // Add concept (shift out oldest if more than 2)
+    if (this.appliedConcepts.length >= 2) {
+      this.appliedConcepts.shift();
+    }
+    this.appliedConcepts.push(concept);
+
+    // Apply special state adjustments
+    if (concept.id === 'stubborn' || concept.id === 'sleepy') {
+      this.body.setImmovable(true);
+      this.body.setVelocity(0, 0);
+    } else if (this.definition.mass < 10) {
+      this.body.setImmovable(false);
+    }
 
     // Visual feedback
     this.showConceptApplication(concept);
-
     return true;
   }
 
-  /** Remove concept from this entity */
+  /** Clear all concepts */
   removeConcept(): void {
-    this.appliedConcept = null;
+    this.appliedConcepts = [];
     this.currentTarget = null;
     this.currentGoal = 'idle';
 
@@ -94,22 +111,24 @@ export class BaseEntity {
       this.auraGraphics.destroy();
       this.auraGraphics = null;
     }
-    if (this.conceptIcon) {
-      this.conceptIcon.destroy();
-      this.conceptIcon = null;
-    }
+    this.conceptIcons.forEach(icon => icon.destroy());
+    this.conceptIcons = [];
     this.sprite.clearTint();
+
+    if (this.definition.mass < 10 && this.definition.hasPhysics) {
+      this.body.setImmovable(false);
+    }
   }
 
   /** Update per frame */
   update(delta: number): void {
     this.animTimer += delta;
 
-    if (this.appliedConcept) {
+    if (this.appliedConcepts.length > 0) {
       this.updateConceptVisuals(delta);
     }
 
-    // Creature idle walking animation
+    // Creature walking animation
     if (this.definition.type === 'creature') {
       const moving = this.body && Math.abs(this.body.velocity.x) > 5;
       if (moving) {
@@ -117,15 +136,19 @@ export class BaseEntity {
       }
     }
 
-    // Collectible floating animation
-    if (this.definition.type === 'collectible') {
+    // Machine gear bobbing
+    if (this.definition.type === 'machine') {
+      this.sprite.setRotation(this.animTimer * 0.002);
+    }
+
+    // Collectibles & Food floating
+    if (this.definition.type === 'collectible' || this.definition.type === 'food') {
       this.sprite.y = this.initialY + Math.sin(this.animTimer * 0.004) * 4;
     }
   }
 
-  /** Show concept application effect */
+  /** Show concept application particle effect */
   private showConceptApplication(concept: ConceptDefinition): void {
-    // Burst particles
     const emitter = this.scene.add.particles(
       this.sprite.x,
       this.sprite.y,
@@ -136,69 +159,77 @@ export class BaseEntity {
         scale: { start: 0.5, end: 0 },
         alpha: { start: 0.8, end: 0 },
         lifespan: 600,
-        quantity: 10,
+        quantity: 12,
         tint: concept.visualStyle.particleColor,
       }
     );
-    emitter.explode(10);
+    emitter.explode(12);
     this.scene.time.delayedCall(700, () => emitter.destroy());
 
-    // Flash tint
     this.sprite.setTint(concept.visualStyle.glowColor);
     this.scene.time.delayedCall(300, () => {
       this.sprite.setTint(concept.visualStyle.tintColor);
     });
 
-    // Create persistent aura
     if (this.auraGraphics) this.auraGraphics.destroy();
     this.auraGraphics = this.scene.add.graphics();
     this.auraGraphics.setDepth(DEPTH.ENTITIES - 1);
 
-    // Create concept icon floating above
-    if (this.conceptIcon) this.conceptIcon.destroy();
-    this.conceptIcon = this.scene.add.image(
-      this.sprite.x,
-      this.sprite.y - 30,
-      concept.icon
-    ).setDepth(DEPTH.ENTITIES + 1).setScale(0.6).setAlpha(0.7);
+    // Recreate concept icons floating above
+    this.conceptIcons.forEach(icon => icon.destroy());
+    this.conceptIcons = [];
 
-    // Scale pop
+    this.appliedConcepts.forEach((c, idx) => {
+      const offset = (idx - (this.appliedConcepts.length - 1) / 2) * 22;
+      const icon = this.scene.add.image(
+        this.sprite.x + offset,
+        this.sprite.y - 30,
+        c.icon
+      ).setDepth(DEPTH.ENTITIES + 1).setScale(0.65).setAlpha(0.85);
+      this.conceptIcons.push(icon);
+    });
+
     this.scene.tweens.add({
       targets: this.sprite,
-      scaleX: 1.3,
-      scaleY: 0.7,
-      duration: 100,
+      scaleX: 1.25,
+      scaleY: 0.75,
+      duration: 120,
       yoyo: true,
       ease: 'Sine.easeOut',
     });
   }
 
-  /** Update concept-specific visuals per frame */
+  /** Update concept-specific visuals */
   private updateConceptVisuals(delta: number): void {
-    if (!this.appliedConcept || !this.auraGraphics) return;
+    if (this.appliedConcepts.length === 0 || !this.auraGraphics) return;
 
-    const style = this.appliedConcept.visualStyle;
+    const primary = this.appliedConcepts[0];
     const t = this.animTimer / 1000;
 
-    // Update aura position with sprite
     this.auraGraphics.clear();
     const pulseRadius = 24 + Math.sin(t * 3) * 4;
-    const alpha = style.auraIntensity * (0.15 + 0.1 * Math.sin(t * 2));
-    this.auraGraphics.fillStyle(style.glowColor, alpha);
+    const alpha = primary.visualStyle.auraIntensity * (0.15 + 0.1 * Math.sin(t * 2));
+    this.auraGraphics.fillStyle(primary.visualStyle.glowColor, alpha);
     this.auraGraphics.fillCircle(this.sprite.x, this.sprite.y, pulseRadius);
 
-    // Update concept icon position
-    if (this.conceptIcon) {
-      this.conceptIcon.setPosition(
-        this.sprite.x,
-        this.sprite.y - 30 + Math.sin(t * 2) * 3
-      );
+    if (this.secondaryConcept) {
+      this.auraGraphics.fillStyle(this.secondaryConcept.visualStyle.glowColor, alpha * 0.7);
+      this.auraGraphics.fillCircle(this.sprite.x, this.sprite.y, pulseRadius * 0.7);
     }
 
-    // Idle animations based on concept (visual-only without breaking physics position)
-    switch (style.idleAnimation) {
+    // Update floating icons
+    this.conceptIcons.forEach((icon, idx) => {
+      const offset = (idx - (this.appliedConcepts.length - 1) / 2) * 22;
+      icon.setPosition(
+        this.sprite.x + offset,
+        this.sprite.y - 32 + Math.sin(t * 2.5 + idx) * 3
+      );
+    });
+
+    // Idle animations based on concept
+    switch (primary.visualStyle.idleAnimation) {
       case 'tremble':
-        this.sprite.setRotation(Math.sin(t * 20) * 0.03);
+        this.sprite.setRotation(Math.sin(t * 22) * 0.04);
         break;
       case 'pulse':
         const scale = 1 + Math.sin(t * 2) * 0.05;
@@ -211,38 +242,43 @@ export class BaseEntity {
       case 'sway':
         this.sprite.setRotation(Math.sin(t * 1.5) * 0.1);
         break;
+      case 'sleep':
+        this.sprite.setScale(1.05, 0.9);
+        break;
+      case 'guard':
+        this.sprite.setScale(1.1, 1.1);
+        break;
+      case 'mirror':
+        this.sprite.setScale(Math.sign(this.sprite.scaleX || 1), 1);
+        break;
     }
   }
 
-  /** Check if this entity has a specific tag */
+  /** Check tag compatibility */
   hasTag(tag: string): boolean {
     return this.tags.includes(tag);
   }
 
-  /** Check if compatible with a concept */
   isCompatibleWith(concept: ConceptDefinition): boolean {
     return concept.compatibleTags.some(tag => this.tags.includes(tag));
   }
 
-  /** Get distance to another entity */
   distanceTo(other: BaseEntity | Phaser.Physics.Arcade.Sprite): number {
     const ox = other instanceof BaseEntity ? other.sprite.x : other.x;
     const oy = other instanceof BaseEntity ? other.sprite.y : other.y;
     return Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, ox, oy);
   }
 
-  /** Activate this entity (e.g. door opens, plate depresses, button toggles) */
+  /** Activate entity mechanisms */
   activate(): void {
     if (this.isActivated) return;
     this.isActivated = true;
 
-    // Specific entity activation logic
     if (this.definition.type === 'door') {
-      // Door slides up and opens path
       this.scene.tweens.add({
         targets: this.sprite,
         y: this.initialY - 80,
-        alpha: 0.4,
+        alpha: 0.35,
         duration: 500,
         ease: 'Cubic.easeOut',
       });
@@ -259,11 +295,10 @@ export class BaseEntity {
       this.onActivate(this);
     }
 
-    // Notify linked entities
     this.linkedEntities.forEach(linked => linked.activate());
   }
 
-  /** Deactivate this entity */
+  /** Deactivate entity */
   deactivate(): void {
     if (!this.isActivated) return;
     this.isActivated = false;
@@ -289,23 +324,18 @@ export class BaseEntity {
       this.onDeactivate(this);
     }
 
-    // Notify linked entities
     this.linkedEntities.forEach(linked => linked.deactivate());
   }
 
-  /** Toggle activation state */
   toggle(): void {
-    if (this.isActivated) {
-      this.deactivate();
-    } else {
-      this.activate();
-    }
+    if (this.isActivated) this.deactivate();
+    else this.activate();
   }
 
-  /** Clean up */
   destroy(): void {
     if (this.auraGraphics) this.auraGraphics.destroy();
-    if (this.conceptIcon) this.conceptIcon.destroy();
+    this.conceptIcons.forEach(icon => icon.destroy());
+    this.conceptIcons = [];
     this.sprite.destroy();
   }
 }

@@ -1,6 +1,6 @@
 // ============================================================
 // OTHERWISE — Audio Manager
-// Procedural audio with volume controls, SFX, and atmospheric synth BGM
+// Procedural audio with regional ambient synthesizer soundscapes for all 4 Regions
 // ============================================================
 import Phaser from 'phaser';
 
@@ -20,11 +20,10 @@ export class AudioManager {
     muted: false,
   };
 
-  // Web Audio context for procedural sounds
   private audioContext: AudioContext | null = null;
   private isMusicPlaying = false;
   private musicIntervalId: number | null = null;
-  private musicGainNode: GainNode | null = null;
+  private currentRegion: string = 'meadow';
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -40,14 +39,52 @@ export class AudioManager {
     }
   }
 
-  /** Start atmospheric background music loop */
-  startMusic(): void {
-    if (this.isMusicPlaying || !this.audioContext) return;
+  /** Start ambient regional music */
+  startMusic(region: string = 'meadow'): void {
+    this.currentRegion = region;
+    if (this.isMusicPlaying) {
+      this.stopMusic();
+    }
     this.isMusicPlaying = true;
 
-    // D minor pentatonic chords & arpeggios
-    // D3, F3, A3, C4, D4, F4, A4
-    const scale = [146.83, 174.61, 220.00, 261.63, 293.66, 349.23, 440.00];
+    // Scales per region
+    let scale: number[];
+    let noteInterval = 1800;
+    let baseWave: OscillatorType = 'sine';
+    let filterCutoff = 800;
+
+    switch (region) {
+      case 'woods':
+        // C minor dark moody tones
+        scale = [130.81, 155.56, 196.00, 233.08, 261.63, 311.13];
+        noteInterval = 2100;
+        baseWave = 'triangle';
+        filterCutoff = 550;
+        break;
+      case 'ruins':
+        // A minor / Dorian mechanical cadence
+        scale = [110.00, 146.83, 164.81, 220.00, 293.66, 329.63, 440.00];
+        noteInterval = 1400;
+        baseWave = 'sawtooth';
+        filterCutoff = 650;
+        break;
+      case 'mountains':
+        // E ethereal lydian / dream harmonics
+        scale = [164.81, 207.65, 246.94, 329.63, 415.30, 493.88, 659.25];
+        noteInterval = 2200;
+        baseWave = 'sine';
+        filterCutoff = 1200;
+        break;
+      case 'meadow':
+      default:
+        // D minor pentatonic warm nostalgic chords
+        scale = [146.83, 174.61, 220.00, 261.63, 293.66, 349.23, 440.00];
+        noteInterval = 1800;
+        baseWave = 'sine';
+        filterCutoff = 800;
+        break;
+    }
+
     let noteIndex = 0;
 
     const playAmbientNote = () => {
@@ -63,17 +100,17 @@ export class AudioManager {
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
 
-      osc.type = 'sine';
+      osc.type = baseWave;
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
 
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(800, ctx.currentTime);
+      filter.frequency.setValueAtTime(filterCutoff, ctx.currentTime);
 
-      const duration = 2.5 + Math.random() * 1.5;
-      const noteVol = vol * 0.12;
+      const duration = 2.4 + Math.random() * 1.4;
+      const noteVol = vol * (baseWave === 'sawtooth' ? 0.05 : 0.12);
 
       gain.gain.setValueAtTime(0.001, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(noteVol, ctx.currentTime + 0.8);
+      gain.gain.linearRampToValueAtTime(noteVol, ctx.currentTime + 0.7);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
       osc.connect(filter);
@@ -84,12 +121,11 @@ export class AudioManager {
       osc.stop(ctx.currentTime + duration + 0.05);
     };
 
-    // Trigger ambient note every ~1.8 seconds
-    this.musicIntervalId = window.setInterval(playAmbientNote, 1800);
+    this.musicIntervalId = window.setInterval(playAmbientNote, noteInterval);
     playAmbientNote();
   }
 
-  /** Stop background music */
+  /** Stop music */
   stopMusic(): void {
     this.isMusicPlaying = false;
     if (this.musicIntervalId !== null) {
@@ -98,7 +134,7 @@ export class AudioManager {
     }
   }
 
-  /** Play a procedural sound effect */
+  /** Play procedural sound effects */
   playSfx(name: string): void {
     if (this.settings.muted || !this.audioContext) return;
     const volume = this.settings.masterVolume * this.settings.sfxVolume;
@@ -113,7 +149,7 @@ export class AudioManager {
         case 'concept_fear': this.playTone(220, 0.15, 'sawtooth', volume * 0.15); break;
         case 'concept_lonely': this.playTone(330, 0.2, 'sine', volume * 0.2, 294); break;
         case 'concept_curious': this.playChime([440, 554, 659], volume * 0.2); break;
-        case 'puzzle_success': this.playChime([523, 659, 784, 1047], volume * 0.3); break;
+        case 'puzzle_success': this.playChime([523, 659, 784, 1047], volume * 0.35); break;
         case 'ui_click': this.playTone(880, 0.03, 'sine', volume * 0.15); break;
         case 'ui_hover': this.playTone(660, 0.02, 'sine', volume * 0.08); break;
         case 'death': this.playTone(200, 0.3, 'sawtooth', volume * 0.2, 80); break;
@@ -121,12 +157,11 @@ export class AudioManager {
         case 'collect': this.playTone(880, 0.1, 'sine', volume * 0.25, 1100); break;
         case 'switch': this.playTone(350, 0.06, 'triangle', volume * 0.25, 520); break;
       }
-    } catch (e) {
-      // Audio failures should never crash the game
+    } catch {
+      // Audio fallback safe
     }
   }
 
-  /** Play a single tone with optional pitch slide */
   private playTone(
     freq: number,
     duration: number,
@@ -154,7 +189,6 @@ export class AudioManager {
     osc.stop(ctx.currentTime + duration + 0.01);
   }
 
-  /** Play a chime (sequence of tones) */
   private playChime(frequencies: number[], volume: number): void {
     if (!this.audioContext) return;
     frequencies.forEach((freq, i) => {
@@ -164,7 +198,6 @@ export class AudioManager {
     });
   }
 
-  /** Play short noise burst (landing, impact) */
   private playNoise(duration: number, volume: number): void {
     if (!this.audioContext) return;
     const ctx = this.audioContext;
@@ -183,10 +216,9 @@ export class AudioManager {
     gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
-    // Low-pass filter for softer sound
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 2000;
+    filter.frequency.value = 1800;
 
     source.connect(filter);
     filter.connect(gain);
@@ -194,7 +226,6 @@ export class AudioManager {
     source.start(ctx.currentTime);
   }
 
-  /** Update settings */
   setMasterVolume(v: number): void { this.settings.masterVolume = v; this.saveSettings(); }
   setMusicVolume(v: number): void { this.settings.musicVolume = v; this.saveSettings(); }
   setSfxVolume(v: number): void { this.settings.sfxVolume = v; this.saveSettings(); }
@@ -202,7 +233,6 @@ export class AudioManager {
   toggleMute(): void { this.settings.muted = !this.settings.muted; this.saveSettings(); }
   getSettings(): AudioSettings { return { ...this.settings }; }
 
-  /** Resume audio context (required after user interaction) */
   resume(): void {
     if (this.audioContext?.state === 'suspended') {
       this.audioContext.resume();

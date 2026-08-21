@@ -1,11 +1,12 @@
 // ============================================================
 // OTHERWISE — Main Menu Scene
-// Beautiful, atmospheric title screen
+// Atmospheric title screen with World Map and Creative Archive navigation
 // ============================================================
 import Phaser from 'phaser';
 import { SCENES, COLORS, GAME_WIDTH, GAME_HEIGHT, DEPTH } from '../../utils/Constants';
 import { hexToString } from '../../utils/MathUtils';
 import { AudioManager } from '../systems/audio/AudioManager';
+import { SaveManager } from '../systems/save/SaveManager';
 
 interface MenuButton {
   bg: Phaser.GameObjects.Image;
@@ -18,6 +19,7 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedIndex = 0;
   private particles!: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; life: number }[];
   private audioManager!: AudioManager;
+  private saveManager!: SaveManager;
 
   constructor() {
     super({ key: SCENES.MAIN_MENU });
@@ -29,6 +31,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.buttons = [];
     this.selectedIndex = 0;
     this.audioManager = new AudioManager(this);
+    this.saveManager = new SaveManager();
 
     this.drawBackground();
     this.drawTitle();
@@ -40,7 +43,6 @@ export class MainMenuScene extends Phaser.Scene {
   private drawBackground(): void {
     const bg = this.add.graphics();
 
-    // Sky gradient
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const t = y / GAME_HEIGHT;
       const r = Math.floor(0x1A + (0x3D - 0x1A) * t * 0.6);
@@ -51,7 +53,7 @@ export class MainMenuScene extends Phaser.Scene {
     }
     bg.setDepth(DEPTH.BG_FAR);
 
-    // Distant mountains silhouette
+    // Distant mountain silhouette
     const mountains = this.add.graphics();
     mountains.fillStyle(COLORS.MOUNTAIN_FAR, 0.3);
     mountains.beginPath();
@@ -90,7 +92,7 @@ export class MainMenuScene extends Phaser.Scene {
     hills.fillPath();
     hills.setDepth(DEPTH.BG_MID + 1);
 
-    // Ground
+    // Ground line
     const ground = this.add.graphics();
     ground.fillStyle(COLORS.GROUND_DARK, 0.6);
     ground.beginPath();
@@ -104,92 +106,67 @@ export class MainMenuScene extends Phaser.Scene {
     ground.lineTo(GAME_WIDTH, GAME_HEIGHT);
     ground.closePath();
     ground.fillPath();
-    ground.setDepth(DEPTH.BG_NEAR);
-
-    // Stars
-    const stars = this.add.graphics();
-    for (let i = 0; i < 60; i++) {
-      const x = Math.random() * GAME_WIDTH;
-      const y = Math.random() * 400;
-      const size = Math.random() * 2 + 0.5;
-      const alpha = Math.random() * 0.5 + 0.2;
-      stars.fillStyle(0xFFFFFF, alpha);
-      stars.fillCircle(x, y, size);
-    }
-    stars.setDepth(DEPTH.BG_FAR + 1);
-
-    // Animate twinkling stars
-    this.tweens.add({
-      targets: stars,
-      alpha: { from: 0.6, to: 1 },
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
+    ground.setDepth(DEPTH.GROUND);
   }
 
   private drawTitle(): void {
-    // Main title
-    const title = this.add.text(GAME_WIDTH / 2, 180, 'OTHERWISE', {
-      fontSize: '72px',
+    const title = this.add.text(GAME_WIDTH / 2, 170, 'OTHERWISE', {
+      fontSize: '64px',
       fontFamily: 'Georgia, "Times New Roman", serif',
       color: hexToString(COLORS.UI_TEXT),
       letterSpacing: 16,
     }).setOrigin(0.5).setDepth(DEPTH.UI);
 
-    // Subtle title glow
+    title.setAlpha(0);
     this.tweens.add({
       targets: title,
-      alpha: { from: 0.85, to: 1 },
-      duration: 3000,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
+      alpha: 1,
+      y: 160,
+      duration: 1500,
+      ease: 'Cubic.easeOut',
     });
 
-    // Tagline
-    const tagline = this.add.text(GAME_WIDTH / 2, 260, 'THE WORLD HAS NO RULES', {
-      fontSize: '16px',
+    const tagline = this.add.text(GAME_WIDTH / 2, 225, 'There is always another way.', {
+      fontSize: '15px',
       fontFamily: 'Georgia, "Times New Roman", serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
-      letterSpacing: 6,
+      letterSpacing: 5,
     }).setOrigin(0.5).setDepth(DEPTH.UI);
 
-    // Fade in tagline
     tagline.setAlpha(0);
     this.tweens.add({
       targets: tagline,
-      alpha: 0.8,
-      duration: 2000,
-      delay: 500,
+      alpha: 0.85,
+      duration: 1800,
+      delay: 400,
       ease: 'Sine.easeOut',
     });
 
-    // Decorative line under tagline
     const line = this.add.graphics();
     line.lineStyle(1, COLORS.UI_ACCENT, 0.4);
-    line.lineBetween(GAME_WIDTH / 2 - 120, 285, GAME_WIDTH / 2 + 120, 285);
+    line.lineBetween(GAME_WIDTH / 2 - 140, 255, GAME_WIDTH / 2 + 140, 255);
     line.setDepth(DEPTH.UI);
     line.setAlpha(0);
     this.tweens.add({
       targets: line,
       alpha: 1,
-      duration: 1500,
-      delay: 800,
+      duration: 1200,
+      delay: 700,
     });
   }
 
   private createButtons(): void {
-    const labels = ['PLAY', 'JOURNAL', 'SETTINGS', 'CREDITS'];
+    const labels = ['PLAY', 'WORLD MAP', 'CREATIVE ARCHIVE', 'JOURNAL', 'SETTINGS', 'CREDITS'];
     const actions = [
       () => this.startGame(),
+      () => this.scene.start(SCENES.WORLD_MAP),
+      () => this.scene.launch(SCENES.CREATIVE_ARCHIVE),
       () => this.scene.launch(SCENES.JOURNAL),
       () => this.scene.launch(SCENES.SETTINGS),
       () => this.scene.launch(SCENES.CREDITS),
     ];
-    const startY = 360;
-    const spacing = 60;
+    const startY = 310;
+    const spacing = 52;
 
     labels.forEach((label, i) => {
       const y = startY + i * spacing;
@@ -201,22 +178,20 @@ export class MainMenuScene extends Phaser.Scene {
         .setAlpha(0);
 
       const text = this.add.text(GAME_WIDTH / 2, y, label, {
-        fontSize: '18px',
+        fontSize: '15px',
         fontFamily: 'Georgia, "Times New Roman", serif',
         color: hexToString(COLORS.UI_TEXT),
-        letterSpacing: 4,
+        letterSpacing: 3,
       }).setOrigin(0.5).setDepth(DEPTH.UI + 1).setAlpha(0);
 
-      // Fade in
       this.tweens.add({
         targets: [bg, text],
         alpha: 1,
-        duration: 600,
-        delay: 1000 + i * 150,
+        duration: 500,
+        delay: 800 + i * 100,
         ease: 'Sine.easeOut',
       });
 
-      // Hover events
       bg.on('pointerover', () => {
         this.selectedIndex = i;
         this.updateButtonSelection();
@@ -234,9 +209,8 @@ export class MainMenuScene extends Phaser.Scene {
       this.buttons.push({ bg, text, index: i });
     });
 
-    // Start with first button selected
-    this.time.delayedCall(1200, () => {
-      this.updateButtonSelection();
+    this.time.delayedCall(1100, () => {
+      this.updateButtonSelection(false);
     });
   }
 
@@ -248,12 +222,11 @@ export class MainMenuScene extends Phaser.Scene {
       if (btn.index === this.selectedIndex) {
         btn.bg.setTexture('ui_button_hover');
         btn.text.setColor(hexToString(COLORS.UI_ACCENT));
-        // Subtle scale pop
         this.tweens.add({
           targets: [btn.bg, btn.text],
           scaleX: 1.05,
           scaleY: 1.05,
-          duration: 150,
+          duration: 120,
           ease: 'Back.easeOut',
         });
       } else {
@@ -263,14 +236,13 @@ export class MainMenuScene extends Phaser.Scene {
           targets: [btn.bg, btn.text],
           scaleX: 1,
           scaleY: 1,
-          duration: 150,
+          duration: 120,
         });
       }
     });
   }
 
   private createParticles(): void {
-    // Floating ambient particles
     for (let i = 0; i < 30; i++) {
       this.particles.push({
         x: Math.random() * GAME_WIDTH,
@@ -294,7 +266,6 @@ export class MainMenuScene extends Phaser.Scene {
         p.y += p.vy * dt;
         p.life += delta;
 
-        // Wrap around
         if (p.y < -10) {
           p.y = GAME_HEIGHT + 10;
           p.x = Math.random() * GAME_WIDTH;
@@ -347,16 +318,19 @@ export class MainMenuScene extends Phaser.Scene {
     }
     switch (this.selectedIndex) {
       case 0: this.startGame(); break;
-      case 1: this.scene.launch(SCENES.JOURNAL); break;
-      case 2: this.scene.launch(SCENES.SETTINGS); break;
-      case 3: this.scene.launch(SCENES.CREDITS); break;
+      case 1: this.scene.start(SCENES.WORLD_MAP); break;
+      case 2: this.scene.launch(SCENES.CREATIVE_ARCHIVE); break;
+      case 3: this.scene.launch(SCENES.JOURNAL); break;
+      case 4: this.scene.launch(SCENES.SETTINGS); break;
+      case 5: this.scene.launch(SCENES.CREDITS); break;
     }
   }
 
   private startGame(): void {
+    const curLevel = this.saveManager.getCurrentLevel();
     this.cameras.main.fadeOut(600, 0x1A, 0x14, 0x25);
     this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start(SCENES.GAME, { level: 1 });
+      this.scene.start(SCENES.GAME, { level: curLevel || 1 });
     });
   }
 }

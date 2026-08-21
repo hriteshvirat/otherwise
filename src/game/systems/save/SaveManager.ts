@@ -1,10 +1,25 @@
 // ============================================================
 // OTHERWISE — Save Manager
-// Versioned localStorage persistence
+// Versioned localStorage persistence with Creative Archive & World Memory
 // ============================================================
 
-const SAVE_KEY = 'otherwise_save';
-const SAVE_VERSION = 1;
+const SAVE_KEY = 'otherwise_save_v2';
+const SAVE_VERSION = 2;
+
+export interface CreativityStats {
+  conceptsApplied: number;
+  uniqueCombinations: string[];
+  jumps: number;
+  deaths: number;
+  secretsFound: number;
+  unorthodoxSolutions: number;
+}
+
+export interface WorldMemory {
+  trustedCreatures: string[];
+  unlockedRegions: string[];
+  unlockedLore: string[];
+}
 
 export interface SaveData {
   version: number;
@@ -16,7 +31,9 @@ export interface SaveData {
     discovered: string[];
     equipped: string | null;
   };
-  discoveries: string[]; // Journal observation IDs
+  discoveries: string[];
+  creativity: CreativityStats;
+  memory: WorldMemory;
   settings: {
     masterVolume: number;
     musicVolume: number;
@@ -42,6 +59,19 @@ function defaultSave(): SaveData {
       equipped: null,
     },
     discoveries: [],
+    creativity: {
+      conceptsApplied: 0,
+      uniqueCombinations: [],
+      jumps: 0,
+      deaths: 0,
+      secretsFound: 0,
+      unorthodoxSolutions: 0,
+    },
+    memory: {
+      trustedCreatures: [],
+      unlockedRegions: ['meadow'],
+      unlockedLore: [],
+    },
     settings: {
       masterVolume: 0.7,
       musicVolume: 0.5,
@@ -63,34 +93,43 @@ export class SaveManager {
     this.data = this.load();
   }
 
-  /** Load save from localStorage, or create default */
   private load(): SaveData {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return defaultSave();
-
-      const parsed = JSON.parse(raw) as SaveData;
-
-      // Version migration
-      if (parsed.version !== SAVE_VERSION) {
-        // For now, just use defaults for any version mismatch
-        // In Phase 2+, implement actual migrations
+      if (!raw) {
+        // Check v1 migration
+        const v1Raw = localStorage.getItem('otherwise_save');
+        if (v1Raw) {
+          const v1 = JSON.parse(v1Raw);
+          const migrated = defaultSave();
+          migrated.progress = v1.progress || migrated.progress;
+          migrated.concepts = v1.concepts || migrated.concepts;
+          migrated.discoveries = v1.discoveries || migrated.discoveries;
+          migrated.settings = v1.settings || migrated.settings;
+          return migrated;
+        }
         return defaultSave();
       }
 
-      return parsed;
+      const parsed = JSON.parse(raw) as SaveData;
+      if (parsed.version !== SAVE_VERSION) {
+        return defaultSave();
+      }
+      return { ...defaultSave(), ...parsed };
     } catch {
       return defaultSave();
     }
   }
 
-  /** Save current state to localStorage */
   save(): void {
-    this.data.timestamp = Date.now();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
+    try {
+      this.data.timestamp = Date.now();
+      localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
+    } catch (e) {
+      console.warn('SaveManager: failed to persist to localStorage', e);
+    }
   }
 
-  /** Get save data */
   getData(): SaveData {
     return this.data;
   }
@@ -105,7 +144,19 @@ export class SaveManager {
     if (!this.data.progress.completedLevels.includes(level)) {
       this.data.progress.completedLevels.push(level);
     }
-    this.data.progress.currentLevel = level + 1;
+    this.data.progress.currentLevel = Math.min(level + 1, 16);
+
+    // Auto unlock regions
+    if (level >= 4 && !this.data.memory.unlockedRegions.includes('woods')) {
+      this.data.memory.unlockedRegions.push('woods');
+    }
+    if (level >= 8 && !this.data.memory.unlockedRegions.includes('ruins')) {
+      this.data.memory.unlockedRegions.push('ruins');
+    }
+    if (level >= 12 && !this.data.memory.unlockedRegions.includes('mountains')) {
+      this.data.memory.unlockedRegions.push('mountains');
+    }
+
     this.save();
   }
 
@@ -115,6 +166,10 @@ export class SaveManager {
 
   getCurrentLevel(): number {
     return this.data.progress.currentLevel;
+  }
+
+  getCompletedLevels(): number[] {
+    return this.data.progress.completedLevels;
   }
 
   // ---- Concepts ----
@@ -134,10 +189,11 @@ export class SaveManager {
     return this.data.concepts.discovered;
   }
 
-  // ---- Discoveries (Journal) ----
+  // ---- Discoveries & Journal ----
   addDiscovery(discoveryId: string): void {
     if (!this.data.discoveries.includes(discoveryId)) {
       this.data.discoveries.push(discoveryId);
+      this.data.creativity.conceptsApplied++;
       this.save();
     }
   }
@@ -150,6 +206,47 @@ export class SaveManager {
     return this.data.discoveries;
   }
 
+  // ---- Creativity Profile Stats ----
+  recordJump(): void {
+    this.data.creativity.jumps++;
+  }
+
+  recordDeath(): void {
+    this.data.creativity.deaths++;
+    this.save();
+  }
+
+  recordCombination(combo: string): void {
+    if (!this.data.creativity.uniqueCombinations.includes(combo)) {
+      this.data.creativity.uniqueCombinations.push(combo);
+      this.save();
+    }
+  }
+
+  recordSecret(secretId: string): void {
+    if (!this.data.secrets.includes(secretId)) {
+      this.data.secrets.push(secretId);
+      this.data.creativity.secretsFound++;
+      this.save();
+    }
+  }
+
+  getCreativityStats(): CreativityStats {
+    return { ...this.data.creativity };
+  }
+
+  // ---- World Memory ----
+  addTrustedCreature(creatureId: string): void {
+    if (!this.data.memory.trustedCreatures.includes(creatureId)) {
+      this.data.memory.trustedCreatures.push(creatureId);
+      this.save();
+    }
+  }
+
+  getUnlockedRegions(): string[] {
+    return this.data.memory.unlockedRegions;
+  }
+
   // ---- Settings ----
   getSettings(): SaveData['settings'] {
     return { ...this.data.settings };
@@ -160,24 +257,9 @@ export class SaveManager {
     this.save();
   }
 
-  // ---- Secrets ----
-  addSecret(secretId: string): void {
-    if (!this.data.secrets.includes(secretId)) {
-      this.data.secrets.push(secretId);
-      this.save();
-    }
-  }
-
   // ---- Reset ----
   resetAll(): void {
     this.data = defaultSave();
-    this.save();
-  }
-
-  resetProgress(): void {
-    this.data.progress = defaultSave().progress;
-    this.data.concepts = defaultSave().concepts;
-    this.data.discoveries = [];
     this.save();
   }
 }

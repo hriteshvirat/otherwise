@@ -55,6 +55,24 @@ export const ENTITY_DEFS: Record<string, EntityDefinition> = {
     textureKey: 'creature',
     displayName: 'Creature',
   },
+  machine: {
+    type: 'machine',
+    tags: ['machine', 'movable', 'solid', 'interactive', 'companion'],
+    hasPhysics: true,
+    isInteractable: true,
+    mass: 4,
+    textureKey: 'machine',
+    displayName: 'Automaton',
+  },
+  food: {
+    type: 'food',
+    tags: ['food', 'bait', 'movable', 'collectible', 'valuable'],
+    hasPhysics: true,
+    isInteractable: true,
+    mass: 0.5,
+    textureKey: 'food',
+    displayName: 'Sweet Berry',
+  },
   pressure_plate: {
     type: 'pressure_plate',
     tags: ['plate', 'interactive', 'trigger'],
@@ -84,11 +102,11 @@ export const ENTITY_DEFS: Record<string, EntityDefinition> = {
   },
   collectible: {
     type: 'collectible',
-    tags: ['collectible', 'special'],
+    tags: ['collectible', 'special', 'valuable'],
     hasPhysics: false,
     isInteractable: true,
     mass: 0,
     textureKey: 'collectible',
-    displayName: 'Orb',
+    displayName: 'Glowing Orb',
   },
 };
