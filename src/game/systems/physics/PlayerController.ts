@@ -77,7 +77,8 @@ export class PlayerController {
     this.body.setSize(28, 32);
     this.body.setOffset(18, 20);
     this.body.setMaxVelocityY(PLAYER.MAX_FALL_SPEED);
-    this.body.setBounce(PLAYER.BOUNCE, 0);
+    this.body.setBounce(0, 0);
+    this.body.setFriction(0, 0);
     this.body.setCollideWorldBounds(false);
 
     // Cache input keys
@@ -93,6 +94,8 @@ export class PlayerController {
     // Eye look direction
     this.blinkTimer = 2000 + Math.random() * 3000;
   }
+
+  private previousVelocityY = 0;
 
   /** Call every frame with delta in ms */
   update(delta: number): void {
@@ -137,24 +140,27 @@ export class PlayerController {
 
   // ---- GROUND STATE ----
   private updateGroundState(delta: number): void {
-    this.wasGrounded = this.isGrounded;
-    this.isGrounded = this.body.blocked.down || this.body.touching.down;
+    const isNowGrounded = this.body.blocked.down || this.body.touching.down;
 
-    if (this.isGrounded) {
+    if (isNowGrounded) {
       this.coyoteTimer = PLAYER.COYOTE_TIME;
-      if (!this.wasGrounded) {
+      if (!this.isGrounded && this.previousVelocityY > 60) {
         this.onLandHandler();
       }
+      this.isGrounded = true;
     } else {
+      this.isGrounded = false;
       this.coyoteTimer -= delta;
       if (this.coyoteTimer < 0) this.coyoteTimer = 0;
     }
+
+    this.previousVelocityY = this.body.velocity.y;
   }
 
   private onLandHandler(): void {
     // Squash on landing
-    this.squashScale = 0.8;
-    this.stretchScale = 1.2;
+    this.squashScale = 0.85;
+    this.stretchScale = 1.15;
     this.isJumping = false;
 
     // Emit landing particles
@@ -276,8 +282,8 @@ export class PlayerController {
   // ---- ANIMATION ----
   private updateAnimation(delta: number): void {
     // Squash/stretch recovery
-    this.squashScale = approach(this.squashScale, 1, 4, delta / 1000);
-    this.stretchScale = approach(this.stretchScale, 1, 4, delta / 1000);
+    this.squashScale = approach(this.squashScale, 1, 6, delta / 1000);
+    this.stretchScale = approach(this.stretchScale, 1, 6, delta / 1000);
 
     // Apply scale
     const flipX = this.facingRight ? 1 : -1;
@@ -293,12 +299,6 @@ export class PlayerController {
         this.isBlinking = true;
         this.blinkTimer = 100 + Math.random() * 50;
       }
-    }
-
-    // Subtle visual bob when moving on ground (affect scale rather than direct y position)
-    if (this.isGrounded && Math.abs(this.velocityX) > 50) {
-      const bob = Math.sin(this.scene.time.now * 0.012) * 0.04;
-      this.sprite.setScale(this.stretchScale * flipX, this.squashScale + bob);
     }
   }
 

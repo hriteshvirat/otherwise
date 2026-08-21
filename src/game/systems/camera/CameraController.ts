@@ -67,29 +67,20 @@ export class CameraController {
     }
     this.currentLookAhead = lerp(this.currentLookAhead, targetLookAhead, 0.05);
 
-    // Desired position with look-ahead and vertical offset
-    this.desiredX = this.target.x + this.currentLookAhead;
-    this.desiredY = this.target.y + CAMERA.VERTICAL_OFFSET;
+    // Smooth follow with continuous damping and bounds clamping
+    const targetScrollX = clamp(
+      this.desiredX - GAME_WIDTH / 2,
+      this.boundsLeft,
+      Math.max(this.boundsLeft, this.boundsRight - GAME_WIDTH)
+    );
+    const targetScrollY = clamp(
+      this.desiredY - GAME_HEIGHT / 2,
+      this.boundsTop,
+      Math.max(this.boundsTop, this.boundsBottom - GAME_HEIGHT)
+    );
 
-    // Smooth follow with dead zone
-    const dx = this.desiredX - this.camera.scrollX - GAME_WIDTH / 2;
-    const dy = this.desiredY - this.camera.scrollY - GAME_HEIGHT / 2;
-
-    if (Math.abs(dx) > CAMERA.DEAD_ZONE_WIDTH) {
-      this.camera.scrollX = lerp(
-        this.camera.scrollX,
-        this.desiredX - GAME_WIDTH / 2,
-        CAMERA.LERP
-      );
-    }
-
-    if (Math.abs(dy) > CAMERA.DEAD_ZONE_HEIGHT) {
-      this.camera.scrollY = lerp(
-        this.camera.scrollY,
-        this.desiredY - GAME_HEIGHT / 2,
-        CAMERA.LERP
-      );
-    }
+    this.camera.scrollX = lerp(this.camera.scrollX, targetScrollX, CAMERA.LERP);
+    this.camera.scrollY = lerp(this.camera.scrollY, targetScrollY, CAMERA.LERP);
   }
 
   /** Pan camera to a point for a cinematic reveal */

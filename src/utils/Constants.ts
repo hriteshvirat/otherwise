@@ -23,8 +23,8 @@ export const PLAYER = {
   JUMP_BUFFER: 150,           // ms
   MAX_FALL_SPEED: 600,
   GRAVITY: 1200,
-  BOUNCE: 0.05,
-  FRICTION: 0.1,
+  BOUNCE: 0,
+  FRICTION: 0,
 } as const;
 
 // -- Camera --
