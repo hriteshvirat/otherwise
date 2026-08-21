@@ -357,14 +357,14 @@ export class GameScene extends Phaser.Scene {
         g.fillRect(plat.x, plat.y + plat.height - 4, plat.width, 4);
       }
 
-      const body = this.groundGroup.create(
+      const zone = this.add.zone(
         plat.x + plat.width / 2,
         plat.y + plat.height / 2,
-        undefined
-      ) as Phaser.Physics.Arcade.Sprite;
-      body.setVisible(false);
-      (body.body as Phaser.Physics.Arcade.StaticBody).setSize(plat.width, plat.height);
-      body.refreshBody();
+        plat.width,
+        plat.height
+      );
+      this.physics.add.existing(zone, true);
+      this.groundGroup.add(zone);
     }
   }
 
@@ -372,6 +372,7 @@ export class GameScene extends Phaser.Scene {
   private createPlayer(): void {
     const start = this.currentLevel.playerStart;
     this.player = new PlayerController(this, start.x, start.y);
+    this.player.setDeathY(this.currentLevel.height + 150);
     this.player.sprite.setDepth(DEPTH.PLAYER);
 
     this.player.onJump = () => {

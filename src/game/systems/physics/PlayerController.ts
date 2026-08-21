@@ -295,10 +295,10 @@ export class PlayerController {
       }
     }
 
-    // Subtle bob when moving on ground
+    // Subtle visual bob when moving on ground (affect scale rather than direct y position)
     if (this.isGrounded && Math.abs(this.velocityX) > 50) {
-      const bob = Math.sin(this.scene.time.now * 0.012) * 1.5;
-      this.sprite.y += bob;
+      const bob = Math.sin(this.scene.time.now * 0.012) * 0.04;
+      this.sprite.setScale(this.stretchScale * flipX, this.squashScale + bob);
     }
   }
 
@@ -325,8 +325,13 @@ export class PlayerController {
   }
 
   // ---- DEATH ----
+  public deathY = 1200;
+  public setDeathY(y: number): void {
+    this.deathY = y;
+  }
+
   private checkDeathZone(): void {
-    if (this.sprite.y > 1000) {
+    if (this.sprite.y > this.deathY) {
       this.die();
     }
   }
