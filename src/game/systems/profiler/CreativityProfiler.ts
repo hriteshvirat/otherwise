@@ -1,8 +1,8 @@
 // ============================================================
 // OTHERWISE — Creativity Profiler
-// Calculates player's emergent creative archetype from gameplay stats
+// Calculates player's emergent creative archetype from gameplay stats (7 Archetypes)
 // ============================================================
-import { CreativityStats, SaveData } from '../save/SaveManager';
+import { SaveData } from '../save/SaveManager';
 
 export interface PlayerProfile {
   title: string;
@@ -39,7 +39,7 @@ export class CreativityProfiler {
       (experimentation + exploration + systemicThinking + riskTaking + persistence + novelty) / 6
     );
 
-    // Archetype selection
+    // 7 Distinct Archetypes
     let title = 'THE EXPERIMENTER';
     let tagline = 'A curious mind seeking what lies beyond the rules.';
     let description = 'You treat the world as an open laboratory, freely assigning intentions to uncover hidden pathways.';
@@ -52,7 +52,11 @@ export class CreativityProfiler {
       title = 'THE EXPLORER';
       tagline = 'Drawn toward the uncharted corners of the world.';
       description = 'No chasm is too deep and no alcove too obscure. You seek the world’s quietest secrets.';
-    } else if (riskTaking >= 60 && stats.uniqueCombinations.length >= 2) {
+    } else if (riskTaking >= 60 && novelty >= 50) {
+      title = 'THE CHAOTIC';
+      tagline = 'Embracing the unpredictable storm of reality.';
+      description = 'You thrive in beautiful entropy, casting desires into the world to watch how unexpectedly reality reshapes itself.';
+    } else if (riskTaking >= 50 && stats.uniqueCombinations.length >= 2) {
       title = 'THE RULE BREAKER';
       tagline = 'Refusing to solve things the expected way.';
       description = 'You find the loopholes in reality and bend the world’s desires until an entirely new path appears.';

@@ -127,9 +127,14 @@ export class InteractionSystem {
       this.audioManager.playSfx('concept_applied');
       this.audioManager.playSfx(equipped.audioCue);
 
-      // Record Journal Discovery
+      // Record Journal Discovery & combinations
       const discoveryKey = `${equipped.id}_${this.currentTarget.definition.type}`;
       this.saveManager.addDiscovery(discoveryKey);
+
+      if (this.currentTarget.appliedConcepts.length > 1) {
+        const comboKey = this.currentTarget.appliedConcepts.map(c => c.id).sort().join('+');
+        this.saveManager.recordCombination(comboKey);
+      }
     } else {
       this.showHint('Not compatible with this object');
       this.audioManager.playSfx('ui_hover');
