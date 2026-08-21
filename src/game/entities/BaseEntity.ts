@@ -64,7 +64,9 @@ export class BaseEntity {
     // Setup physics
     if (definition.hasPhysics) {
       this.body.setCollideWorldBounds(false);
-      this.body.setBounce(0.1, 0.05);
+      this.body.setBounce(0, 0);
+      this.body.setDrag(1200, 0);
+      this.body.setDamping(false);
       if (definition.mass >= 10) {
         this.body.setImmovable(true);
       }
@@ -117,6 +119,7 @@ export class BaseEntity {
 
     if (this.definition.mass < 10 && this.definition.hasPhysics) {
       this.body.setImmovable(false);
+      this.body.setVelocity(0, 0);
     }
   }
 

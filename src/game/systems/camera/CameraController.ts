@@ -1,20 +1,15 @@
 // ============================================================
 // OTHERWISE — Camera Controller
-// Smooth follow with look-ahead, level bounds, cinematic framing
+// Smooth follow with deadzone, level bounds, and cinematic framing
 // ============================================================
 import Phaser from 'phaser';
 import { CAMERA, GAME_WIDTH, GAME_HEIGHT } from '../../../utils/Constants';
-import { lerp, clamp } from '../../../utils/MathUtils';
+import { clamp, lerp } from '../../../utils/MathUtils';
 
 export class CameraController {
   private scene: Phaser.Scene;
   private camera: Phaser.Cameras.Scene2D.Camera;
   private target: Phaser.GameObjects.Sprite | null = null;
-
-  // Smooth follow state
-  private desiredX = 0;
-  private desiredY = 0;
-  private currentLookAhead = 0;
 
   // Level bounds
   private boundsLeft = 0;
@@ -36,8 +31,15 @@ export class CameraController {
   /** Set the target to follow */
   setTarget(sprite: Phaser.GameObjects.Sprite): void {
     this.target = sprite;
-    this.desiredX = sprite.x;
-    this.desiredY = sprite.y;
+    this.camera.startFollow(
+      sprite,
+      true,
+      CAMERA.LERP,
+      CAMERA.LERP,
+      0,
+      CAMERA.VERTICAL_OFFSET
+    );
+    this.camera.setDeadzone(CAMERA.DEAD_ZONE_WIDTH * 2, CAMERA.DEAD_ZONE_HEIGHT * 2);
   }
 
   /** Set level bounds */
@@ -46,45 +48,21 @@ export class CameraController {
     this.boundsTop = top;
     this.boundsRight = right;
     this.boundsBottom = bottom;
-    this.camera.setBounds(left, top, right - left, bottom - top);
+    const width = Math.max(GAME_WIDTH, right - left);
+    const height = Math.max(GAME_HEIGHT, bottom - top);
+    this.camera.setBounds(left, top, width, height);
   }
 
   /** Update per frame */
   update(delta: number): void {
     if (this.cinematicTarget) {
       this.updateCinematic(delta);
-      return;
     }
-
-    if (!this.target) return;
-
-    // Look-ahead based on movement direction
-    const body = this.target.body as Phaser.Physics.Arcade.Body;
-    let targetLookAhead = 0;
-    if (body) {
-      if (body.velocity.x > 30) targetLookAhead = CAMERA.LOOK_AHEAD;
-      else if (body.velocity.x < -30) targetLookAhead = -CAMERA.LOOK_AHEAD;
-    }
-    this.currentLookAhead = lerp(this.currentLookAhead, targetLookAhead, 0.05);
-
-    // Smooth follow with continuous damping and bounds clamping
-    const targetScrollX = clamp(
-      this.desiredX - GAME_WIDTH / 2,
-      this.boundsLeft,
-      Math.max(this.boundsLeft, this.boundsRight - GAME_WIDTH)
-    );
-    const targetScrollY = clamp(
-      this.desiredY - GAME_HEIGHT / 2,
-      this.boundsTop,
-      Math.max(this.boundsTop, this.boundsBottom - GAME_HEIGHT)
-    );
-
-    this.camera.scrollX = lerp(this.camera.scrollX, targetScrollX, CAMERA.LERP);
-    this.camera.scrollY = lerp(this.camera.scrollY, targetScrollY, CAMERA.LERP);
   }
 
   /** Pan camera to a point for a cinematic reveal */
   panTo(x: number, y: number, duration: number, callback?: () => void): void {
+    this.camera.stopFollow();
     this.cinematicTarget = { x, y };
     this.cinematicDuration = duration;
     this.cinematicTimer = 0;
@@ -97,10 +75,8 @@ export class CameraController {
     this.cinematicTimer += delta;
     const t = clamp(this.cinematicTimer / this.cinematicDuration, 0, 1);
 
-    // Ease in-out
-    const eased = t < 0.5
-      ? 2 * t * t
-      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    // Ease in-out cubic
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
     this.camera.scrollX = lerp(
       this.camera.scrollX,
@@ -115,6 +91,16 @@ export class CameraController {
 
     if (this.cinematicTimer >= this.cinematicDuration) {
       this.cinematicTarget = null;
+      if (this.target) {
+        this.camera.startFollow(
+          this.target,
+          true,
+          CAMERA.LERP,
+          CAMERA.LERP,
+          0,
+          CAMERA.VERTICAL_OFFSET
+        );
+      }
       if (this.cinematicCallback) {
         this.cinematicCallback();
       }
@@ -123,7 +109,6 @@ export class CameraController {
 
   /** Shake the camera (respects reduced motion setting) */
   shake(duration: number = 200, intensity: number = 0.005): void {
-    // Check reduced motion setting
     const settings = localStorage.getItem('otherwise_settings');
     if (settings) {
       const parsed = JSON.parse(settings);
