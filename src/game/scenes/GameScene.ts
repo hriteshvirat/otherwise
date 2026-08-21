@@ -837,6 +837,48 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Segoe UI", Roboto, sans-serif',
       color: hexToString(COLORS.UI_TEXT_DIM),
     }).setScrollFactor(0).setDepth(DEPTH.UI + 1).setAlpha(0.7);
+
+    // Top-Right Three-Line (Hamburger) In-Game Menu Button
+    const menuBtnX = GAME_WIDTH - 48;
+    const menuBtnY = 36;
+    const menuBtnSize = 42;
+
+    const menuBtnBg = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.UI + 5);
+    const drawMenuBtn = (hover: boolean) => {
+      menuBtnBg.clear();
+      menuBtnBg.fillStyle(COLORS.UI_PANEL, hover ? 0.95 : 0.75);
+      menuBtnBg.fillRoundedRect(menuBtnX - menuBtnSize / 2, menuBtnY - menuBtnSize / 2, menuBtnSize, menuBtnSize, 8);
+      menuBtnBg.lineStyle(1.5, hover ? COLORS.UI_ACCENT : COLORS.UI_BORDER, hover ? 0.9 : 0.45);
+      menuBtnBg.strokeRoundedRect(menuBtnX - menuBtnSize / 2, menuBtnY - menuBtnSize / 2, menuBtnSize, menuBtnSize, 8);
+
+      // Draw 3 horizontal lines (hamburger icon)
+      const lineColor = hover ? COLORS.UI_ACCENT : COLORS.UI_TEXT;
+      menuBtnBg.fillStyle(lineColor, 0.9);
+      for (let i = -1; i <= 1; i++) {
+        menuBtnBg.fillRoundedRect(menuBtnX - 10, menuBtnY + i * 6 - 1.5, 20, 3, 1.5);
+      }
+    };
+    drawMenuBtn(false);
+
+    const hitArea = this.add.rectangle(menuBtnX, menuBtnY, menuBtnSize, menuBtnSize, 0x000000, 0)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.UI + 6)
+      .setInteractive({ useHandCursor: true });
+
+    hitArea.on('pointerover', () => {
+      drawMenuBtn(true);
+      this.audioManager.playSfx('ui_hover');
+    });
+
+    hitArea.on('pointerout', () => {
+      drawMenuBtn(false);
+    });
+
+    hitArea.on('pointerdown', () => {
+      this.audioManager.playSfx('ui_click');
+      this.scene.launch(SCENES.PAUSE, { gameScene: this });
+      this.scene.pause();
+    });
   }
 
   private updateHUD(): void {

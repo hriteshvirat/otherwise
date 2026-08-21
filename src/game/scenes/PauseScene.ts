@@ -1,9 +1,9 @@
 // ============================================================
 // OTHERWISE — Pause Scene
-// Overlay pause menu
+// Comprehensive In-Game Menu (Resume, Restart, World Map, Journal, Archive, Settings, Menu)
 // ============================================================
 import Phaser from 'phaser';
-import { SCENES, COLORS, GAME_WIDTH, GAME_HEIGHT, DEPTH } from '../../utils/Constants';
+import { SCENES, COLORS, GAME_WIDTH, GAME_HEIGHT } from '../../utils/Constants';
 import { hexToString } from '../../utils/MathUtils';
 
 export class PauseScene extends Phaser.Scene {
@@ -13,19 +13,19 @@ export class PauseScene extends Phaser.Scene {
 
   create(): void {
     // Dark overlay
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6)
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.65)
       .setDepth(0);
 
     // Panel
     const panel = this.add.graphics().setDepth(1);
     panel.fillStyle(COLORS.UI_PANEL, 0.95);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 150, 180, 300, 360, 16);
+    panel.fillRoundedRect(GAME_WIDTH / 2 - 170, 90, 340, 540, 16);
     panel.lineStyle(1, COLORS.UI_BORDER, 0.5);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 150, 180, 300, 360, 16);
+    panel.strokeRoundedRect(GAME_WIDTH / 2 - 170, 90, 340, 540, 16);
 
     // Title
-    this.add.text(GAME_WIDTH / 2, 220, 'PAUSED', {
-      fontSize: '28px',
+    this.add.text(GAME_WIDTH / 2, 130, 'PAUSED', {
+      fontSize: '26px',
       fontFamily: 'Georgia, serif',
       color: hexToString(COLORS.UI_TEXT),
       letterSpacing: 6,
@@ -34,7 +34,10 @@ export class PauseScene extends Phaser.Scene {
     // Buttons
     const buttons = [
       { label: 'RESUME', action: () => this.resumeGame() },
-      { label: 'RESTART', action: () => this.restartLevel() },
+      { label: 'RESTART LEVEL', action: () => this.restartLevel() },
+      { label: 'WORLD MAP', action: () => this.toWorldMap() },
+      { label: 'CONCEPT JOURNAL', action: () => this.openJournal() },
+      { label: 'CREATIVE ARCHIVE', action: () => this.openArchive() },
       { label: 'SETTINGS', action: () => this.openSettings() },
       { label: 'MAIN MENU', action: () => this.toMainMenu() },
     ];
@@ -43,15 +46,15 @@ export class PauseScene extends Phaser.Scene {
     const btnObjects: { bg: Phaser.GameObjects.Image; text: Phaser.GameObjects.Text }[] = [];
 
     buttons.forEach((btn, i) => {
-      const y = 300 + i * 55;
+      const y = 195 + i * 54;
       const bg = this.add.image(GAME_WIDTH / 2, y, 'ui_button')
         .setDepth(2)
         .setInteractive({ useHandCursor: true });
       const text = this.add.text(GAME_WIDTH / 2, y, btn.label, {
-        fontSize: '16px',
+        fontSize: '14px',
         fontFamily: 'Georgia, serif',
         color: hexToString(COLORS.UI_TEXT),
-        letterSpacing: 3,
+        letterSpacing: 2,
       }).setOrigin(0.5).setDepth(3);
 
       bg.on('pointerover', () => {
@@ -77,7 +80,7 @@ export class PauseScene extends Phaser.Scene {
 
     updateSelection();
 
-    // Keyboard
+    // Keyboard controls
     if (this.input.keyboard) {
       this.input.keyboard.on('keydown-ESC', () => this.resumeGame());
       this.input.keyboard.on('keydown-UP', () => {
@@ -99,7 +102,28 @@ export class PauseScene extends Phaser.Scene {
 
   private restartLevel(): void {
     this.scene.stop();
-    this.scene.get(SCENES.GAME).scene.restart();
+    const gameScene = this.scene.get(SCENES.GAME);
+    if (gameScene) {
+      (gameScene as any).audioManager?.stopMusic();
+      gameScene.scene.restart();
+    }
+  }
+
+  private toWorldMap(): void {
+    const gameScene = this.scene.get(SCENES.GAME);
+    if (gameScene) {
+      (gameScene as any).audioManager?.stopMusic();
+    }
+    this.scene.stop(SCENES.GAME);
+    this.scene.start(SCENES.WORLD_MAP);
+  }
+
+  private openJournal(): void {
+    this.scene.launch(SCENES.JOURNAL);
+  }
+
+  private openArchive(): void {
+    this.scene.launch(SCENES.CREATIVE_ARCHIVE);
   }
 
   private openSettings(): void {
@@ -107,6 +131,10 @@ export class PauseScene extends Phaser.Scene {
   }
 
   private toMainMenu(): void {
+    const gameScene = this.scene.get(SCENES.GAME);
+    if (gameScene) {
+      (gameScene as any).audioManager?.stopMusic();
+    }
     this.scene.stop(SCENES.GAME);
     this.scene.start(SCENES.MAIN_MENU);
   }
