@@ -4,10 +4,12 @@
 
 An original 2D systemic adventure puzzle platformer created for the **BTT Web Game Jam, Summer 2026**.
 
+🎮 **Play Online**: [https://otherwise-dun.vercel.app](https://otherwise-dun.vercel.app)
+
 ---
 
 ## 🌟 Elevator Pitch
-In a fragmented storybook world where objects have forgotten what they are supposed to want, you play as a curious creature who discovers abstract **Concepts** (such as *Fear*, *Lonely*, *Curiosity*, *Trust*, *Greed*, *Protection*, *Stubbornness*, and *Slumber*) and assigns them to entities. When you change what things want, the world changes how they behave — yielding surprising, emergent solutions to environmental puzzles.
+In a fragmented storybook world where objects have forgotten what they are supposed to want, you play as a curious creature who discovers abstract **Concepts** (such as *Fear*, *Lonely*, *Curiosity*, *Trust*, *Greed*, *Protection*, *Stubbornness*, *Imitate*, and *Slumber*) and assigns them to entities. When you change what things want, the world changes how they behave — yielding surprising, emergent solutions to environmental puzzles.
 
 ---
 
@@ -42,21 +44,20 @@ $$\text{Object} + \text{Concept} \longrightarrow \text{New Desire} \longrightarr
    - Dense foliage, glowing fireflies, eerie mist, introducing *Trust*, *Hunger*, and *Protection*.
 3. **The Clockwork Ruins** (Levels 9–12 + Secret 3 *The Gearvault*)
    - Ancient mechanical ruins, cogs, conveyor platforms, introducing *Greed*, *Stubbornness*, *Repeat*, and *Imitate*.
-4. **The Dreaming Mountains** (Levels 13–16)
+4. **The Dreaming Mountains** (Levels 13–16 *The Grand Awakening*)
    - Shimmering auroras, celestial floating islands, introducing *Follow*, *Sleep*, *Jealousy*, and complex Multi-Concept synergies.
 
 ---
 
 ## 🎨 Creative Archive & Profiling
-Every player approaches problems differently. The **Creative Archive** tracks your actions across 6 gameplay dimensions:
-- **Experimentation**
-- **Exploration**
-- **Systemic Thinking**
-- **Risk Taking**
-- **Persistence**
-- **Novelty**
-
-At any point, view your emergent creative archetype: *The Engineer*, *The Explorer*, *The Rule Breaker*, *The Empath*, *The Observer*, or *The Experimenter*.
+Every player approaches problems differently. The **Creative Archive** tracks your actions across 6 gameplay dimensions (*Experimentation*, *Exploration*, *Systemic Thinking*, *Risk Taking*, *Persistence*, *Novelty*) and evaluates your emergent creative archetype:
+- **THE ENGINEER**: Systemic thinking & cause-and-effect mastery.
+- **THE EXPLORER**: Discoverer of secret challenge alcoves and lore.
+- **THE CHAOTIC**: High risk-taking & unpredictable emergent experimentation.
+- **THE RULE BREAKER**: Exploiter of unconventional concept combinations.
+- **THE EMPATH**: Master of trust, protection, and harmony.
+- **THE OBSERVER**: Patient, resolute investigator.
+- **THE EXPERIMENTER**: Balanced innovator across all 13 Concepts.
 
 ---
 
@@ -91,7 +92,7 @@ At any point, view your emergent creative archetype: *The Engineer*, *The Explor
 
 ```bash
 # Clone the repository
-git clone https://github.com/example/otherwise.git
+git clone https://github.com/hriteshvirat/otherwise.git
 cd otherwise
 
 # Install dependencies
@@ -108,4 +109,4 @@ npm run build
 
 ## 📜 Credits & License
 Created by the **OTHERWISE Team** for the **BTT Web Game Jam, Summer 2026**.
-Released under the **MIT License**.
+Released under the [MIT License](LICENSE).
